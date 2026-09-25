@@ -51,10 +51,25 @@ export default function MediaDetail() {
     },
   })
 
+  const { data: keyframesData, isLoading: keyframesLoading } = useQuery({
+    queryKey: ['keyframes', id],
+    queryFn: () => mediaService.getKeyframes(Number(id)),
+    enabled: !!media && media.status === 'ready',
+    retry: false,
+  })
+
+  const indexVisualMutation = useMutation({
+    mutationFn: () => mediaService.triggerVisualIndexing(Number(id)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['keyframes', id] })
+    },
+  })
+
   const detectScenesMutation = useMutation({
     mutationFn: () => mediaService.triggerSceneDetection(Number(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scenes', id] })
+      queryClient.invalidateQueries({ queryKey: ['keyframes', id] })
     },
   })
 
@@ -64,6 +79,7 @@ export default function MediaDetail() {
       queryClient.invalidateQueries({ queryKey: ['transcript', id] })
     },
   })
+
 
 
   const getStatusColor = (status: string) => {
@@ -493,10 +509,112 @@ export default function MediaDetail() {
             </div>
           )}
         </div>
+
+        {/* Visual Keyframes & Multimodal Vectors */}
+        <div style={{
+          marginTop: '2rem',
+          backgroundColor: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '12px',
+          padding: '1.5rem',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, margin: 0 }}>
+                Indexed Visual Keyframes ({keyframesData?.total_keyframes || 0} vectors)
+              </h2>
+              <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                OpenCLIP ViT-B/32 multimodal feature vectors stored in ChromaDB vector index
+              </p>
+            </div>
+
+            {media.status === 'ready' && (
+              <button
+                onClick={() => indexVisualMutation.mutate()}
+                disabled={indexVisualMutation.isPending}
+                style={{
+                  padding: '0.4rem 0.8rem',
+                  fontSize: '0.8rem',
+                  backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                  color: '#a5b4fc',
+                  border: '1px solid rgba(99, 102, 241, 0.4)',
+                  borderRadius: '6px',
+                  cursor: indexVisualMutation.isPending ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {indexVisualMutation.isPending ? 'Indexing Vectors...' : 'Re-index Visuals'}
+              </button>
+            )}
+          </div>
+
+          {keyframesLoading ? (
+            <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.875rem' }}>Loading indexed keyframes...</p>
+          ) : !keyframesData || keyframesData.keyframes.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'rgba(255, 255, 255, 0.4)', fontSize: '0.875rem' }}>
+              No visual keyframes indexed yet.
+            </div>
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+              gap: '1rem',
+            }}>
+              {keyframesData.keyframes.map((kf) => {
+                const kfUrl = `http://localhost:8000/media/${kf.file_path.replace(/\\/g, '/').replace(/^\/?media\//, '')}`
+
+                return (
+                  <div
+                    key={kf.id}
+                    onClick={() => handleSeek(kf.timestamp)}
+                    style={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      transition: 'transform 0.2s, border-color 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = '#6366f1'
+                      e.currentTarget.style.transform = 'translateY(-2px)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'
+                      e.currentTarget.style.transform = 'translateY(0)'
+                    }}
+                  >
+                    <img
+                      src={kfUrl}
+                      alt={`Keyframe at ${kf.timestamp}s`}
+                      style={{
+                        width: '100%',
+                        height: '100px',
+                        objectFit: 'cover',
+                        display: 'block',
+                        backgroundColor: '#000',
+                      }}
+                    />
+                    <div style={{ padding: '0.5rem 0.75rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#a5b4fc' }}>
+                          ▶ {formatTime(kf.timestamp)}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
+                          Frame #{kf.frame_index + 1}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
 }
+
 
 
 function MetadataRow({ label, value }: { label: string; value: string }) {

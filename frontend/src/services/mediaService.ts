@@ -1,10 +1,12 @@
 import { api } from './api'
 import type {
+  KeyframeListResponse,
   MediaAsset,
   MediaUploadResponse,
   MediaURLIngestRequest,
   SceneListResponse,
   Transcript,
+  VisualSearchResponse,
 } from '../types/media'
 
 export const mediaService = {
@@ -73,6 +75,33 @@ export const mediaService = {
     })
     return response.data
   },
+
+  // Get keyframes
+  async getKeyframes(mediaId: number, sceneId?: number): Promise<KeyframeListResponse> {
+    const response = await api.get(`/api/media/${mediaId}/keyframes`, {
+      params: sceneId !== undefined ? { scene_id: sceneId } : undefined,
+    })
+    return response.data
+  },
+
+  // Trigger visual indexing
+  async triggerVisualIndexing(mediaId: number): Promise<KeyframeListResponse> {
+    const response = await api.post(`/api/media/${mediaId}/index-visual`)
+    return response.data
+  },
+
+  // Visual semantic search
+  async searchVisual(query: string, mediaId?: number, topK = 10): Promise<VisualSearchResponse> {
+    const response = await api.get('/api/visual/search', {
+      params: {
+        q: query,
+        ...(mediaId !== undefined ? { media_id: mediaId } : {}),
+        top_k: topK,
+      },
+    })
+    return response.data
+  },
 }
+
 
 

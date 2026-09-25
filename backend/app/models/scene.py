@@ -46,11 +46,13 @@ class Scene(Base):
 
     # Relationships
     media = relationship("MediaAsset", back_populates="scenes")
+    keyframes = relationship("Keyframe", back_populates="scene", cascade="all, delete-orphan", order_by="Keyframe.timestamp")
 
     __table_args__ = (
         Index("ix_scenes_media_start", "media_id", "start_time"),
         Index("ix_scenes_media_index", "media_id", "scene_index"),
     )
+
 
     def __repr__(self):
         return (

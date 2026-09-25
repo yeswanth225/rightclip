@@ -75,6 +75,38 @@ async def get_media(
     return media_asset
 
 
+@router.delete("/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_media(
+    media_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Delete a media asset, its database records, keyframes, scenes, and associated vector embeddings.
+
+    Args:
+        media_id: Media asset ID
+        db: Database session
+    """
+    media_asset = db.query(MediaAsset).filter(MediaAsset.id == media_id).first()
+    if not media_asset:
+        raise HTTPException(status_code=404, detail="Media asset not found")
+
+    # Clean up ChromaDB vectors
+    try:
+        from app.services.vector.chroma_provider import ChromaVectorProvider
+        vector_provider = ChromaVectorProvider()
+        vector_provider.delete_by_media_id(media_id)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to cleanup vectors for media {media_id}: {e}")
+
+    # Delete media record (cascade will handle transcripts, scenes, keyframes)
+    db.delete(media_asset)
+    db.commit()
+    return None
+
+
+
 @router.post("/media/upload", response_model=MediaUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_media(
     background_tasks: BackgroundTasks,
@@ -310,9 +342,23 @@ async def _process_media(media_id: int, source):
             import logging
             logging.getLogger(__name__).warning(f"Scene detection failed for media {media_id}: {scene_err}")
 
+        # Run visual-semantic keyframing & vector indexing
+        try:
+            from app.services.indexing.visual_service import VisualIndexingService
+            visual_service = VisualIndexingService()
+            visual_service.index_media_visuals(
+                media_id=media_id,
+                db=db_session,
+                video_path=proxy_path if proxy_path.exists() else original_path,
+            )
+        except Exception as visual_err:
+            import logging
+            logging.getLogger(__name__).warning(f"Visual indexing failed for media {media_id}: {visual_err}")
+
         # Mark as ready
         media_asset.status = MediaStatus.READY
         db_session.commit()
+
 
 
     except Exception as e:

@@ -16,6 +16,12 @@ from app.schemas.transcript import (
     TranscriptResponse,
     TranscriptSegmentResponse,
 )
+from app.schemas.visual import (
+    KeyframeListResponse,
+    KeyframeResponse,
+    VisualSearchMatchResponse,
+    VisualSearchResponse,
+)
 
 __all__ = [
     "MediaAssetBase",
@@ -28,6 +34,11 @@ __all__ = [
     "TranscriptSegmentResponse",
     "SceneResponse",
     "SceneListResponse",
+    "KeyframeResponse",
+    "KeyframeListResponse",
+    "VisualSearchMatchResponse",
+    "VisualSearchResponse",
 ]
+
 
 

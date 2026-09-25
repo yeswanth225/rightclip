@@ -84,5 +84,41 @@ export interface SceneListResponse {
   scenes: Scene[]
 }
 
+export interface Keyframe {
+  id: number
+  media_id: number
+  scene_id: number
+  timestamp: number
+  frame_index: number
+  file_path: string
+  vector_id?: string
+  created_at: string
+}
+
+export interface KeyframeListResponse {
+  media_id: number
+  scene_id?: number
+  total_keyframes: number
+  keyframes: Keyframe[]
+}
+
+export interface VisualSearchMatch {
+  keyframe_id: number
+  media_id: number
+  scene_id: number
+  timestamp: number
+  file_path: string
+  similarity_score: number
+  vector_id: string
+}
+
+export interface VisualSearchResponse {
+  query: string
+  total_results: number
+  latency_ms: number
+  results: VisualSearchMatch[]
+}
+
+
 
 

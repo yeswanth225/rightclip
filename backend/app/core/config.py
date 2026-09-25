@@ -46,6 +46,17 @@ class Settings(BaseSettings):
     scene_min_duration_seconds: float = 1.0
     scene_frame_skip: int = 2  # Skip frames to accelerate detection
 
+    # Visual Embedding Settings
+    clip_model_name: str = "ViT-B-32"
+    clip_pretrained: str = "openai"  # openai or laion2b_s34b_b79k
+    clip_device: str = "auto"  # auto, cuda, cpu
+    clip_batch_size: int = 16
+
+    # Vector Storage Settings
+    chroma_persist_dir: str = "./data/chroma_db"
+    chroma_collection_name: str = "keyframes_vit_b_32"
+
+
 
 
     @property

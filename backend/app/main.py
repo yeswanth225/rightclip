@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
-from app.api import health, media, scenes, transcript
+from app.api import health, media, scenes, transcript, visual
 from app.core.config import get_settings
 from app.core.database import Base, engine
 
@@ -52,6 +52,8 @@ app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(media.router, prefix="/api", tags=["media"])
 app.include_router(transcript.router, prefix="/api", tags=["transcript"])
 app.include_router(scenes.router, prefix="/api", tags=["scenes"])
+app.include_router(visual.router, prefix="/api", tags=["visual"])
+
 
 
 

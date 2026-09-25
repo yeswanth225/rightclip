@@ -60,6 +60,9 @@ media/
 uploads/
 exports/
 proxies/
+data/
+*.mp4
+*.wav
 
 # Alembic
 alembic/versions/*.pyc
