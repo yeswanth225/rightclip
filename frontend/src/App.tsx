@@ -4,6 +4,7 @@ import Home from './pages/Home'
 import MediaLibrary from './pages/MediaLibrary'
 import MediaDetail from './pages/MediaDetail'
 import SearchPage from './pages/SearchPage'
+import ClipEditor from './features/clip-editor/ClipEditor'
 
 function App() {
   return (
@@ -14,6 +15,8 @@ function App() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/library" element={<MediaLibrary />} />
           <Route path="/media/:id" element={<MediaDetail />} />
+          <Route path="/media/:id/edit-clip" element={<ClipEditor />} />
+          <Route path="/clip-editor/:id" element={<ClipEditor />} />
         </Route>
       </Routes>
     </BrowserRouter>
@@ -21,3 +24,4 @@ function App() {
 }
 
 export default App
+

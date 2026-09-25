@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { mediaService } from '../services/mediaService'
+import { getAssetUrl } from '../utils/assets'
 import type { MediaAsset } from '../types/media'
 
 export default function MediaLibrary() {
@@ -136,9 +137,7 @@ export default function MediaLibrary() {
             gap: '1.5rem',
           }}>
             {mediaAssets.map((media: MediaAsset) => {
-              const thumbUrl = media.thumbnail_path
-                ? `http://localhost:8000/media/${media.thumbnail_path.replace(/\\/g, '/').replace(/^\/?media\//, '')}`
-                : null
+              const thumbUrl = getAssetUrl(media.thumbnail_path)
 
               return (
                 <div

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { mediaService } from '../services/mediaService'
+import { getAssetUrl } from '../utils/assets'
 
 export default function MediaDetail() {
   const { id } = useParams()
@@ -138,9 +139,7 @@ export default function MediaDetail() {
     )
   }
 
-  const proxyUrl = media.proxy_path
-    ? `http://localhost:8000/media/${media.proxy_path.replace(/\\/g, '/').replace(/^\/?media\//, '')}`
-    : null
+  const proxyUrl = getAssetUrl(media.proxy_path || media.file_path)
 
   const filteredSegments = (transcript?.segments || []).filter((seg) =>
     seg.text.toLowerCase().includes(searchTerm.toLowerCase())
@@ -169,33 +168,54 @@ export default function MediaDetail() {
           {media.filename}
         </h1>
 
-        {/* Status Badges */}
-        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
-          <div style={{
-            display: 'inline-block',
-            padding: '0.4rem 0.8rem',
-            fontSize: '0.875rem',
-            fontWeight: 500,
-            backgroundColor: `${getStatusColor(media.status)}20`,
-            color: getStatusColor(media.status),
-            borderRadius: '12px',
-          }}>
-            Media: {media.status.toUpperCase()}
-          </div>
-
-          {transcript && (
+        {/* Status Badges & Quick Action */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <div style={{
               display: 'inline-block',
               padding: '0.4rem 0.8rem',
               fontSize: '0.875rem',
               fontWeight: 500,
-              backgroundColor: `${getStatusColor(transcript.status)}20`,
-              color: getStatusColor(transcript.status),
+              backgroundColor: `${getStatusColor(media.status)}20`,
+              color: getStatusColor(media.status),
               borderRadius: '12px',
             }}>
-              Transcript: {transcript.status.toUpperCase()}
-              {transcript.language && ` (${transcript.language.toUpperCase()})`}
+              Media: {media.status.toUpperCase()}
             </div>
+
+            {transcript && (
+              <div style={{
+                display: 'inline-block',
+                padding: '0.4rem 0.8rem',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+                backgroundColor: `${getStatusColor(transcript.status)}20`,
+                color: getStatusColor(transcript.status),
+                borderRadius: '12px',
+              }}>
+                Transcript: {transcript.status.toUpperCase()}
+                {transcript.language && ` (${transcript.language.toUpperCase()})`}
+              </div>
+            )}
+          </div>
+
+          {media.status === 'ready' && (
+            <button
+              onClick={() => navigate(`/media/${media.id}/edit-clip`)}
+              style={{
+                padding: '0.5rem 1.1rem',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                backgroundColor: '#6366f1',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                boxShadow: '0 2px 10px rgba(99, 102, 241, 0.4)',
+              }}
+            >
+              ✂️ Open Clip Editor
+            </button>
           )}
         </div>
 
@@ -438,9 +458,7 @@ export default function MediaDetail() {
               gap: '1rem',
             }}>
               {scenesData.scenes.map((scene) => {
-                const thumbUrl = scene.thumbnail_path
-                  ? `http://localhost:8000/media/${scene.thumbnail_path.replace(/\\/g, '/').replace(/^\/?media\//, '')}`
-                  : null
+                const thumbUrl = getAssetUrl(scene.thumbnail_path)
 
                 return (
                   <div
@@ -560,7 +578,7 @@ export default function MediaDetail() {
               gap: '1rem',
             }}>
               {keyframesData.keyframes.map((kf) => {
-                const kfUrl = `http://localhost:8000/media/${kf.file_path.replace(/\\/g, '/').replace(/^\/?media\//, '')}`
+                const kfUrl = getAssetUrl(kf.file_path)
 
                 return (
                   <div

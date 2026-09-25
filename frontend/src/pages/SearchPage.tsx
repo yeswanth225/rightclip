@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { mediaService } from '../services/mediaService'
+import { getAssetUrl } from '../utils/assets'
 import type { UnifiedSearchResult } from '../types/media'
 
 export default function SearchPage() {
@@ -52,9 +53,7 @@ export default function SearchPage() {
     ? (mediaList || []).find((m) => m.id === selectedResult.media_id)
     : null
 
-  const proxyUrl = activeMedia?.proxy_path
-    ? `http://localhost:8000/media/${activeMedia.proxy_path.replace(/\\/g, '/').replace(/^\/?media\//, '')}`
-    : null
+  const proxyUrl = getAssetUrl(activeMedia?.proxy_path || activeMedia?.file_path)
 
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '2rem' }}>
@@ -143,7 +142,7 @@ export default function SearchPage() {
           borderRadius: '12px',
           padding: '1.5rem',
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
             <div>
               <h2 style={{ fontSize: '1.15rem', fontWeight: 600, margin: 0, color: '#fff' }}>
                 Previewing Match: {selectedResult.media_filename}
@@ -152,20 +151,45 @@ export default function SearchPage() {
                 Interval: {formatTime(selectedResult.start_time)} – {formatTime(selectedResult.end_time)} (Jump: {formatTime(selectedResult.representative_timestamp)})
               </span>
             </div>
-            <button
-              onClick={() => navigate(`/media/${selectedResult.media_id}`)}
-              style={{
-                padding: '0.4rem 0.8rem',
-                fontSize: '0.8rem',
-                backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                color: '#fff',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '6px',
-                cursor: 'pointer',
-              }}
-            >
-              Open Full Media →
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                onClick={() => navigate(`/media/${selectedResult.media_id}/edit-clip`, {
+                  state: {
+                    searchResult: selectedResult,
+                    initialStart: selectedResult.start_time,
+                    initialEnd: selectedResult.end_time,
+                    searchQuery: activeQuery,
+                  },
+                })}
+                style={{
+                  padding: '0.45rem 0.9rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  backgroundColor: '#6366f1',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(99, 102, 241, 0.4)',
+                }}
+              >
+                ✂️ Edit Clip
+              </button>
+              <button
+                onClick={() => navigate(`/media/${selectedResult.media_id}`)}
+                style={{
+                  padding: '0.45rem 0.85rem',
+                  fontSize: '0.8rem',
+                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                  color: '#fff',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                }}
+              >
+                Open Media →
+              </button>
+            </div>
           </div>
 
           {proxyUrl ? (
@@ -234,9 +258,7 @@ export default function SearchPage() {
       {searchData && searchData.results.length > 0 && (
         <div style={{ display: 'grid', gap: '1.25rem' }}>
           {searchData.results.map((result, idx) => {
-            const thumbUrl = result.thumbnail_path
-              ? `http://localhost:8000/media/${result.thumbnail_path.replace(/\\/g, '/').replace(/^\/?media\//, '')}`
-              : null
+            const thumbUrl = getAssetUrl(result.thumbnail_path)
 
             const isSelected = selectedResult === result
 
@@ -341,24 +363,49 @@ export default function SearchPage() {
                   <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#818cf8' }}>
                     {result.score.toFixed(3)}
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleSeek(result)
-                    }}
-                    style={{
-                      marginTop: '0.5rem',
-                      padding: '0.35rem 0.75rem',
-                      fontSize: '0.75rem',
-                      backgroundColor: 'rgba(99, 102, 241, 0.2)',
-                      color: '#a5b4fc',
-                      border: '1px solid rgba(99, 102, 241, 0.4)',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    ▶ Play
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.5rem' }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleSeek(result)
+                      }}
+                      style={{
+                        padding: '0.35rem 0.65rem',
+                        fontSize: '0.75rem',
+                        backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                        color: '#a5b4fc',
+                        border: '1px solid rgba(99, 102, 241, 0.4)',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ▶ Play
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigate(`/media/${result.media_id}/edit-clip`, {
+                          state: {
+                            searchResult: result,
+                            initialStart: result.start_time,
+                            initialEnd: result.end_time,
+                            searchQuery: activeQuery,
+                          },
+                        })
+                      }}
+                      style={{
+                        padding: '0.35rem 0.65rem',
+                        fontSize: '0.75rem',
+                        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                        color: '#fff',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ✂️ Edit Clip
+                    </button>
+                  </div>
                 </div>
               </div>
             )

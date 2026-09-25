@@ -29,11 +29,7 @@ export const mediaService = {
     const formData = new FormData()
     formData.append('file', file)
 
-    const response = await api.post('/api/media/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
+    const response = await api.post('/api/media/upload', formData)
     return response.data
   },
 
@@ -119,7 +115,47 @@ export const mediaService = {
     })
     return response.data
   },
+
+  // Save / Create Clip
+  async createClip(clip: {
+    media_id: number
+    title: string
+    start_time: number
+    end_time: number
+    search_query?: string
+    evidence_json?: Record<string, any>
+  }): Promise<import('../types/media').Clip> {
+    const response = await api.post('/api/clips', clip)
+    return response.data
+  },
+
+  // Get Media Clips
+  async getMediaClips(mediaId: number): Promise<import('../types/media').ClipListResponse> {
+    const response = await api.get(`/api/media/${mediaId}/clips`)
+    return response.data
+  },
+
+  // Get Single Clip
+  async getClip(clipId: number): Promise<import('../types/media').Clip> {
+    const response = await api.get(`/api/clips/${clipId}`)
+    return response.data
+  },
+
+  // Update Clip
+  async updateClip(
+    clipId: number,
+    update: { title?: string; start_time?: number; end_time?: number }
+  ): Promise<import('../types/media').Clip> {
+    const response = await api.put(`/api/clips/${clipId}`, update)
+    return response.data
+  },
+
+  // Delete Clip
+  async deleteClip(clipId: number): Promise<void> {
+    await api.delete(`/api/clips/${clipId}`)
+  },
 }
+
 
 
 

@@ -154,6 +154,21 @@ export interface UnifiedSearchResponse {
   results: UnifiedSearchResult[]
 }
 
+export interface Clip {
+  id: number
+  media_id: number
+  title: string
+  start_time: number
+  end_time: number
+  duration: number
+  search_query?: string
+  evidence_json?: Record<string, any>
+  created_at: string
+  updated_at?: string
+}
 
-
-
+export interface ClipListResponse {
+  media_id: number
+  total_clips: number
+  clips: Clip[]
+}

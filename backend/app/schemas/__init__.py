@@ -28,6 +28,12 @@ from app.schemas.search import (
     UnifiedSearchResult,
     UnifiedSearchResponse,
 )
+from app.schemas.clip import (
+    ClipCreate,
+    ClipUpdate,
+    ClipResponse,
+    ClipListResponse,
+)
 
 __all__ = [
     "MediaAssetBase",
@@ -48,7 +54,12 @@ __all__ = [
     "SearchMatchEvidence",
     "UnifiedSearchResult",
     "UnifiedSearchResponse",
+    "ClipCreate",
+    "ClipUpdate",
+    "ClipResponse",
+    "ClipListResponse",
 ]
+
 
 
 

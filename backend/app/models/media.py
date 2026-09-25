@@ -68,6 +68,7 @@ class MediaAsset(Base):
     transcript_segments = relationship("TranscriptSegment", back_populates="media", cascade="all, delete-orphan")
     scenes = relationship("Scene", back_populates="media", cascade="all, delete-orphan", order_by="Scene.start_time")
     keyframes = relationship("Keyframe", back_populates="media", cascade="all, delete-orphan", order_by="Keyframe.timestamp")
+    clips = relationship("Clip", back_populates="media", cascade="all, delete-orphan", order_by="Clip.created_at.desc()")
 
     def __repr__(self):
         return f"<MediaAsset(id={self.id}, filename='{self.filename}', status='{self.status}')>"
