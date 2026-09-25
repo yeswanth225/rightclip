@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { MediaAsset, MediaUploadResponse, MediaURLIngestRequest } from '../types/media'
+import type { MediaAsset, MediaUploadResponse, MediaURLIngestRequest, Transcript } from '../types/media'
 
 export const mediaService = {
   // List media assets
@@ -36,4 +36,19 @@ export const mediaService = {
     } as MediaURLIngestRequest)
     return response.data
   },
+
+  // Get transcript
+  async getTranscript(mediaId: number): Promise<Transcript> {
+    const response = await api.get(`/api/media/${mediaId}/transcript`)
+    return response.data
+  },
+
+  // Trigger transcription
+  async triggerTranscription(mediaId: number, language?: string): Promise<Transcript> {
+    const response = await api.post(`/api/media/${mediaId}/transcribe`, null, {
+      params: language ? { language } : undefined,
+    })
+    return response.data
+  },
 }
+

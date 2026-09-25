@@ -19,6 +19,8 @@ aiofiles==24.1.0
 
 # Media Processing
 ffmpeg-python==0.2.0
+faster-whisper==1.2.1
 
 # CORS
 python-dotenv==1.0.1
+

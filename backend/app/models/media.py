@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import Enum
 
 from sqlalchemy import Column, DateTime, Integer, String, Text, Float, JSON
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -62,5 +63,10 @@ class MediaAsset(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
+    # Relationships
+    transcript = relationship("Transcript", back_populates="media", uselist=False, cascade="all, delete-orphan")
+    transcript_segments = relationship("TranscriptSegment", back_populates="media", cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<MediaAsset(id={self.id}, filename='{self.filename}', status='{self.status}')>"
+

@@ -35,3 +35,32 @@ export interface MediaUploadResponse {
 export interface MediaURLIngestRequest {
   url: string
 }
+
+export interface TranscriptSegment {
+  id: number
+  transcript_id: number
+  media_id: number
+  segment_index: number
+  start_time: number
+  end_time: number
+  text: string
+  avg_logprob?: number
+  no_speech_prob?: number
+}
+
+export interface Transcript {
+  id: number
+  media_id: number
+  status: 'pending' | 'transcribing' | 'completed' | 'failed' | 'skipped'
+  language?: string
+  language_probability?: number
+  duration?: number
+  full_text?: string
+  provider: string
+  model_name: string
+  error_message?: string
+  created_at: string
+  updated_at?: string
+  segments: TranscriptSegment[]
+}
+

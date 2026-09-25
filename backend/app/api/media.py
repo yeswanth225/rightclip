@@ -4,8 +4,9 @@ import asyncio
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
+
 
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -76,6 +77,7 @@ async def get_media(
 
 @router.post("/media/upload", response_model=MediaUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_media(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
@@ -83,6 +85,7 @@ async def upload_media(
     Upload a media file
 
     Args:
+        background_tasks: FastAPI background tasks
         file: Uploaded file
         db: Database session
 
@@ -119,8 +122,8 @@ async def upload_media(
     # Create source
     source = LocalUploadSource(file_content, safe_filename)
 
-    # Process media in background (async, but simplified for now)
-    asyncio.create_task(_process_media(media_asset.id, source, db))
+    # Process media in background
+    background_tasks.add_task(_process_media_task, media_asset.id, source)
 
     return MediaUploadResponse(
         id=media_asset.id,
@@ -133,6 +136,7 @@ async def upload_media(
 @router.post("/media/url", response_model=MediaUploadResponse, status_code=status.HTTP_201_CREATED)
 async def ingest_media_url(
     request: MediaURLIngestRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """
@@ -140,6 +144,7 @@ async def ingest_media_url(
 
     Args:
         request: URL ingestion request
+        background_tasks: FastAPI background tasks
         db: Database session
 
     Returns:
@@ -178,7 +183,7 @@ async def ingest_media_url(
     source = DirectURLSource(request.url)
 
     # Process media in background
-    asyncio.create_task(_process_media(media_asset.id, source, db))
+    background_tasks.add_task(_process_media_task, media_asset.id, source)
 
     return MediaUploadResponse(
         id=media_asset.id,
@@ -188,15 +193,21 @@ async def ingest_media_url(
     )
 
 
-async def _process_media(media_id: int, source, db: Session):
+async def _process_media_task(media_id: int, source):
+    """Background task entry point for media processing"""
+    await _process_media(media_id, source)
+
+
+
+async def _process_media(media_id: int, source):
     """
     Background task to process uploaded media
 
     Args:
         media_id: Media asset ID
         source: MediaSource instance
-        db: Database session
     """
+
     from sqlalchemy.orm import Session as SessionType
 
     # Create new DB session for background task
@@ -272,6 +283,20 @@ async def _process_media(media_id: int, source, db: Session):
         media_asset.thumbnail_path = str(thumbnail_path)
         db_session.commit()
 
+        # Run speech-to-text transcription
+        try:
+            from app.services.transcription.service import TranscriptionService
+            transcription_service = TranscriptionService()
+            transcription_service.process_media_transcription(
+                media_id=media_id,
+                db=db_session,
+                media_path=proxy_path if proxy_path.exists() else original_path,
+            )
+        except Exception as transcript_err:
+            # Log transcription error without failing the whole media asset
+            import logging
+            logging.getLogger(__name__).warning(f"Transcription failed for media {media_id}: {transcript_err}")
+
         # Mark as ready
         media_asset.status = MediaStatus.READY
         db_session.commit()
@@ -286,3 +311,4 @@ async def _process_media(media_id: int, source, db: Session):
 
     finally:
         db_session.close()
+

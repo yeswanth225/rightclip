@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 2048
     max_video_duration_seconds: int = 7200
 
+    # Transcription Settings
+    whisper_model_size: str = "base"
+    whisper_device: str = "auto"  # auto, cpu, cuda
+    whisper_compute_type: str = "auto"  # auto, int8, float16, float32
+    whisper_threads: int = 4
+
+
     @property
     def allowed_origins_list(self) -> List[str]:
         """Parse allowed origins into a list"""
