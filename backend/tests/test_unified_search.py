@@ -182,6 +182,9 @@ def test_unified_multimodal_temporal_fusion():
         db.add(seg)
         db.commit()
 
+        import uuid
+        vid = f"kf_fusion_{uuid.uuid4().hex[:8]}"
+
         # Keyframe in Scene 1 @ 44.0s
         kf = Keyframe(
             media_id=asset.id,
@@ -189,7 +192,7 @@ def test_unified_multimodal_temporal_fusion():
             timestamp=44.0,
             frame_index=0,
             file_path="media/keyframes/test_kf.jpg",
-            vector_id="kf_fusion_1",
+            vector_id=vid,
         )
         db.add(kf)
         db.commit()
@@ -200,7 +203,7 @@ def test_unified_multimodal_temporal_fusion():
 
         # Add mock vector for kf with high blue similarity
         vec_mock.upsert_vectors(
-            ids=["kf_fusion_1"],
+            ids=[vid],
             embeddings=[[0.8 / (512**0.5)] * 512],
             metadatas=[{
                 "keyframe_id": kf.id,

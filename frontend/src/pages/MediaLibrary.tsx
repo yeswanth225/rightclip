@@ -132,43 +132,58 @@ export default function MediaLibrary() {
         {mediaAssets && mediaAssets.length > 0 && (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
             gap: '1.5rem',
           }}>
-            {mediaAssets.map((media: MediaAsset) => (
-              <div
-                key={media.id}
-                onClick={() => navigate(`/media/${media.id}`)}
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '12px',
-                  padding: '1rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)'
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'
-                }}
-              >
-                {/* Thumbnail placeholder */}
-                <div style={{
-                  aspectRatio: '16/9',
-                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                  borderRadius: '8px',
-                  marginBottom: '1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '3rem',
-                }}>
-                  🎬
-                </div>
+            {mediaAssets.map((media: MediaAsset) => {
+              const thumbUrl = media.thumbnail_path
+                ? `http://localhost:8000/media/${media.thumbnail_path.replace(/\\/g, '/').replace(/^\/?media\//, '')}`
+                : null
+
+              return (
+                <div
+                  key={media.id}
+                  onClick={() => navigate(`/media/${media.id}`)}
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: '12px',
+                    padding: '1rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'
+                    e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.4)'
+                    e.currentTarget.style.transform = 'translateY(-2px)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)'
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'
+                    e.currentTarget.style.transform = 'translateY(0)'
+                  }}
+                >
+                  {/* Real video thumbnail or placeholder */}
+                  <div style={{
+                    aspectRatio: '16/9',
+                    backgroundColor: '#000',
+                    borderRadius: '8px',
+                    marginBottom: '1rem',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    {thumbUrl ? (
+                      <img
+                        src={thumbUrl}
+                        alt={media.filename}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: '2.5rem' }}>🎬</span>
+                    )}
+                  </div>
 
                 {/* Filename */}
                 <h3 style={{
@@ -222,10 +237,11 @@ export default function MediaLibrary() {
                   </div>
                 )}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
-  )
+  </div>
+)
 }
