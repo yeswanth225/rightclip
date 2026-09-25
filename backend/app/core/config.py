@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "./data/chroma_db"
     chroma_collection_name: str = "keyframes_vit_b_32"
 
+    # Unified Search & Ranking Settings
+    search_temporal_window_seconds: float = 6.0
+    search_transcript_weight: float = 0.45
+    search_visual_weight: float = 0.45
+    search_agreement_bonus: float = 0.10
+    search_min_visual_score: float = 0.18
+    search_default_limit: int = 15
+
 
 
 

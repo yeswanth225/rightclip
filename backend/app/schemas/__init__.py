@@ -22,6 +22,12 @@ from app.schemas.visual import (
     VisualSearchMatchResponse,
     VisualSearchResponse,
 )
+from app.schemas.search import (
+    SearchMode,
+    SearchMatchEvidence,
+    UnifiedSearchResult,
+    UnifiedSearchResponse,
+)
 
 __all__ = [
     "MediaAssetBase",
@@ -38,6 +44,10 @@ __all__ = [
     "KeyframeListResponse",
     "VisualSearchMatchResponse",
     "VisualSearchResponse",
+    "SearchMode",
+    "SearchMatchEvidence",
+    "UnifiedSearchResult",
+    "UnifiedSearchResponse",
 ]
 
 

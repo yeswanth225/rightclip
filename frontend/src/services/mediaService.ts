@@ -101,6 +101,24 @@ export const mediaService = {
     })
     return response.data
   },
+
+  // Unified AI Multimodal Search
+  async searchUnified(
+    query: string,
+    mediaId?: number,
+    mode: 'hybrid' | 'transcript' | 'visual' = 'hybrid',
+    limit = 15
+  ): Promise<import('../types/media').UnifiedSearchResponse> {
+    const response = await api.get('/api/search', {
+      params: {
+        q: query,
+        ...(mediaId !== undefined ? { media_id: mediaId } : {}),
+        mode,
+        limit,
+      },
+    })
+    return response.data
+  },
 }
 
 

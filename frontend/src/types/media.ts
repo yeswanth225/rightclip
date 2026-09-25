@@ -119,6 +119,41 @@ export interface VisualSearchResponse {
   results: VisualSearchMatch[]
 }
 
+export interface SearchMatchEvidence {
+  transcript_text?: string
+  transcript_segment_id?: number
+  transcript_score: number
+  keyframe_id?: number
+  keyframe_path?: string
+  visual_similarity: number
+  agreement: boolean
+  explanation: string
+}
+
+export interface UnifiedSearchResult {
+  media_id: number
+  media_filename: string
+  scene_id?: number
+  scene_index?: number
+  start_time: number
+  end_time: number
+  representative_timestamp: number
+  thumbnail_path?: string
+  score: number
+  evidence: SearchMatchEvidence
+}
+
+export interface UnifiedSearchResponse {
+  query: string
+  mode: 'hybrid' | 'transcript' | 'visual'
+  total_results: number
+  latency_ms: number
+  transcript_latency_ms: number
+  visual_latency_ms: number
+  fusion_latency_ms: number
+  results: UnifiedSearchResult[]
+}
+
 
 
 
