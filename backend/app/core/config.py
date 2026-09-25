@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     whisper_compute_type: str = "auto"  # auto, int8, float16, float32
     whisper_threads: int = 4
 
+    # Scene Detection Settings
+    scene_detector_type: str = "content"  # content, adaptive, threshold
+    scene_threshold: float = 27.0
+    scene_min_duration_seconds: float = 1.0
+    scene_frame_skip: int = 2  # Skip frames to accelerate detection
+
+
 
     @property
     def allowed_origins_list(self) -> List[str]:

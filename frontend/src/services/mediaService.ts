@@ -1,5 +1,11 @@
 import { api } from './api'
-import type { MediaAsset, MediaUploadResponse, MediaURLIngestRequest, Transcript } from '../types/media'
+import type {
+  MediaAsset,
+  MediaUploadResponse,
+  MediaURLIngestRequest,
+  SceneListResponse,
+  Transcript,
+} from '../types/media'
 
 export const mediaService = {
   // List media assets
@@ -50,5 +56,23 @@ export const mediaService = {
     })
     return response.data
   },
+
+  // Get scenes
+  async getScenes(mediaId: number): Promise<SceneListResponse> {
+    const response = await api.get(`/api/media/${mediaId}/scenes`)
+    return response.data
+  },
+
+  // Trigger scene detection
+  async triggerSceneDetection(mediaId: number, detectorType?: string, threshold?: number): Promise<SceneListResponse> {
+    const response = await api.post(`/api/media/${mediaId}/scenes/detect`, null, {
+      params: {
+        ...(detectorType ? { detector_type: detectorType } : {}),
+        ...(threshold ? { threshold } : {}),
+      },
+    })
+    return response.data
+  },
 }
+
 

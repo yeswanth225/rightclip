@@ -64,3 +64,25 @@ export interface Transcript {
   segments: TranscriptSegment[]
 }
 
+export interface Scene {
+  id: number
+  media_id: number
+  scene_index: number
+  start_time: number
+  end_time: number
+  duration: number
+  thumbnail_path?: string
+  thumbnail_time?: number
+  detector: string
+  score?: number
+  created_at: string
+}
+
+export interface SceneListResponse {
+  media_id: number
+  total_scenes: number
+  scenes: Scene[]
+}
+
+
+

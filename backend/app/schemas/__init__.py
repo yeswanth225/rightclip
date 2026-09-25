@@ -8,6 +8,10 @@ from app.schemas.media import (
     MediaURLIngestRequest,
     HealthCheckResponse,
 )
+from app.schemas.scene import (
+    SceneListResponse,
+    SceneResponse,
+)
 from app.schemas.transcript import (
     TranscriptResponse,
     TranscriptSegmentResponse,
@@ -22,5 +26,8 @@ __all__ = [
     "HealthCheckResponse",
     "TranscriptResponse",
     "TranscriptSegmentResponse",
+    "SceneResponse",
+    "SceneListResponse",
 ]
+
 

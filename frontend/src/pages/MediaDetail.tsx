@@ -37,12 +37,34 @@ export default function MediaDetail() {
     },
   })
 
+  const { data: scenesData, isLoading: scenesLoading } = useQuery({
+    queryKey: ['scenes', id],
+    queryFn: () => mediaService.getScenes(Number(id)),
+    enabled: !!media && media.status === 'ready',
+    retry: false,
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (data && data.total_scenes === 0 && media?.status === 'processing') {
+        return 2000
+      }
+      return false
+    },
+  })
+
+  const detectScenesMutation = useMutation({
+    mutationFn: () => mediaService.triggerSceneDetection(Number(id)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scenes', id] })
+    },
+  })
+
   const transcribeMutation = useMutation({
     mutationFn: () => mediaService.triggerTranscription(Number(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transcript', id] })
     },
   })
+
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -349,10 +371,133 @@ export default function MediaDetail() {
             )}
           </div>
         </div>
+
+        {/* Scene Detection & Visual Timeline */}
+        <div style={{
+          marginTop: '2rem',
+          backgroundColor: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '12px',
+          padding: '1.5rem',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, margin: 0 }}>
+                Visual Scenes & Timeline ({scenesData?.total_scenes || 0} scenes)
+              </h2>
+              <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                Click any scene card or thumbnail to jump playback directly to that scene boundary
+              </p>
+            </div>
+
+            {media.status === 'ready' && (
+              <button
+                onClick={() => detectScenesMutation.mutate()}
+                disabled={detectScenesMutation.isPending}
+                style={{
+                  padding: '0.4rem 0.8rem',
+                  fontSize: '0.8rem',
+                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                  color: '#fff',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '6px',
+                  cursor: detectScenesMutation.isPending ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {detectScenesMutation.isPending ? 'Detecting Scenes...' : 'Re-detect Scenes'}
+              </button>
+            )}
+          </div>
+
+          {scenesLoading ? (
+            <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.875rem' }}>Loading detected scenes...</p>
+          ) : !scenesData || scenesData.scenes.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'rgba(255, 255, 255, 0.4)', fontSize: '0.875rem' }}>
+              No scene boundaries detected or processing in progress.
+            </div>
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: '1rem',
+            }}>
+              {scenesData.scenes.map((scene) => {
+                const thumbUrl = scene.thumbnail_path
+                  ? `http://localhost:8000/media/${scene.thumbnail_path.replace(/\\/g, '/').replace(/^\/?media\//, '')}`
+                  : null
+
+                return (
+                  <div
+                    key={scene.id}
+                    onClick={() => handleSeek(scene.start_time)}
+                    style={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      transition: 'transform 0.2s, border-color 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = '#818cf8'
+                      e.currentTarget.style.transform = 'translateY(-2px)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'
+                      e.currentTarget.style.transform = 'translateY(0)'
+                    }}
+                  >
+                    {thumbUrl ? (
+                      <img
+                        src={thumbUrl}
+                        alt={`Scene ${scene.scene_index + 1}`}
+                        style={{
+                          width: '100%',
+                          height: '120px',
+                          objectFit: 'cover',
+                          display: 'block',
+                          backgroundColor: '#000',
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: '100%',
+                        height: '120px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: 'rgba(0,0,0,0.3)',
+                        color: 'rgba(255,255,255,0.3)',
+                        fontSize: '0.75rem',
+                      }}>
+                        No Thumbnail
+                      </div>
+                    )}
+
+                    <div style={{ padding: '0.75rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>
+                          Scene #{scene.scene_index + 1}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: '#818cf8', fontWeight: 500 }}>
+                          {scene.duration.toFixed(1)}s
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.6)' }}>
+                        {formatTime(scene.start_time)} → {formatTime(scene.end_time)}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
 }
+
 
 function MetadataRow({ label, value }: { label: string; value: string }) {
   return (

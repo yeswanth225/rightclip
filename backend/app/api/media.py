@@ -297,9 +297,23 @@ async def _process_media(media_id: int, source):
             import logging
             logging.getLogger(__name__).warning(f"Transcription failed for media {media_id}: {transcript_err}")
 
+        # Run scene boundary detection
+        try:
+            from app.services.scenes.service import SceneService
+            scene_service = SceneService()
+            scene_service.process_media_scenes(
+                media_id=media_id,
+                db=db_session,
+                video_path=proxy_path if proxy_path.exists() else original_path,
+            )
+        except Exception as scene_err:
+            import logging
+            logging.getLogger(__name__).warning(f"Scene detection failed for media {media_id}: {scene_err}")
+
         # Mark as ready
         media_asset.status = MediaStatus.READY
         db_session.commit()
+
 
     except Exception as e:
         # Mark as failed
