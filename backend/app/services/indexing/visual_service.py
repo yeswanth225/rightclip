@@ -150,23 +150,13 @@ class VisualIndexingService:
         logger.info(f"Computing CLIP embeddings for {len(image_paths)} keyframes...")
         embeddings = self.embedding_provider.embed_images_batch(image_paths)
 
-        # 4. Prepare vector records and database models
+        # 4. Prepare database models, flush to assign primary keys, then build Chroma metadatas
         vector_ids = []
-        metadatas = []
         keyframe_records: List[Keyframe] = []
 
-        for (scene, f_idx, t_stamp, kf_path), emb in zip(extracted_keyframes, embeddings):
+        for (scene, f_idx, t_stamp, kf_path) in extracted_keyframes:
             vid = f"kf_{media_id}_{scene.id}_{f_idx}_{uuid.uuid4().hex[:8]}"
             vector_ids.append(vid)
-
-            metadatas.append({
-                "media_id": media_id,
-                "scene_id": scene.id,
-                "scene_index": scene.scene_index,
-                "timestamp": t_stamp,
-                "frame_index": f_idx,
-                "file_path": str(kf_path),
-            })
 
             db_kf = Keyframe(
                 media_id=media_id,
@@ -179,7 +169,23 @@ class VisualIndexingService:
             db.add(db_kf)
             keyframe_records.append(db_kf)
 
-        # 5. Upsert to Vector Database
+        # Flush session to assign auto-incrementing primary key IDs
+        db.flush()
+
+        # 5. Build vector metadatas with real keyframe_id
+        metadatas = []
+        for (scene, f_idx, t_stamp, kf_path), db_kf in zip(extracted_keyframes, keyframe_records):
+            metadatas.append({
+                "keyframe_id": db_kf.id,
+                "media_id": media_id,
+                "scene_id": scene.id,
+                "scene_index": scene.scene_index,
+                "timestamp": t_stamp,
+                "frame_index": f_idx,
+                "file_path": str(kf_path),
+            })
+
+        # 6. Upsert to Vector Database
         self.vector_provider.upsert_vectors(
             ids=vector_ids,
             embeddings=embeddings,

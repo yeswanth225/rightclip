@@ -149,13 +149,19 @@ def test_visual_indexing_service_flow(tmp_path, monkeypatch):
         search_hits = service.search_similar_keyframes("find scene", top_k=2, media_id=asset.id)
         assert len(search_hits) == 2
         assert search_hits[0]["metadata"]["media_id"] == asset.id
+        # Verify real keyframe_id is present in Chroma metadata and matches DB
+        kf0 = db.query(Keyframe).filter(Keyframe.media_id == asset.id).order_by(Keyframe.timestamp).first()
+        assert search_hits[0]["metadata"]["keyframe_id"] == kf0.id
 
     finally:
         db.close()
 
 
 def test_visual_endpoints_and_deletion_cleanup():
-    """Test GET /api/media/{id}/keyframes and DELETE /api/media/{id} cleanup"""
+    """Test GET /api/media/{id}/keyframes and DELETE /api/media/{id} cleanup (DB + vectors + filesystem)"""
+    from app.core.config import get_settings
+    settings = get_settings()
+
     db = SessionLocal()
     try:
         asset = MediaAsset(
@@ -185,6 +191,13 @@ def test_visual_endpoints_and_deletion_cleanup():
         db.commit()
         db.close()
 
+        # Create dummy physical files for media_id
+        storage_base = Path(settings.media_storage_path).resolve()
+        kf_dir = storage_base / "keyframes" / str(media_id)
+        kf_dir.mkdir(parents=True, exist_ok=True)
+        (kf_dir / "test.jpg").write_bytes(b"dummy_data")
+        assert kf_dir.exists()
+
         # 1. Fetch keyframes endpoint
         res = client.get(f"/api/media/{media_id}/keyframes")
         assert res.status_code == 200
@@ -196,7 +209,10 @@ def test_visual_endpoints_and_deletion_cleanup():
         del_res = client.delete(f"/api/media/{media_id}")
         assert del_res.status_code == 204
 
-        # 3. Verify cascading delete of keyframes with fresh DB session
+        # 3. Verify physical directory cleanup
+        assert not kf_dir.exists()
+
+        # 4. Verify cascading delete of keyframes with fresh DB session
         check_db = SessionLocal()
         try:
             assert check_db.query(Keyframe).filter(Keyframe.media_id == media_id).count() == 0

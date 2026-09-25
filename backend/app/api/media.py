@@ -81,26 +81,41 @@ async def delete_media(
     db: Session = Depends(get_db),
 ):
     """
-    Delete a media asset, its database records, keyframes, scenes, and associated vector embeddings.
+    Delete a media asset, its database records, keyframes, scenes, associated vector embeddings,
+    and physical storage files.
 
     Args:
         media_id: Media asset ID
         db: Database session
     """
+    import shutil
+    import logging
+
     media_asset = db.query(MediaAsset).filter(MediaAsset.id == media_id).first()
     if not media_asset:
         raise HTTPException(status_code=404, detail="Media asset not found")
 
-    # Clean up ChromaDB vectors
+    # 1. Clean up ChromaDB vectors
     try:
         from app.services.vector.chroma_provider import ChromaVectorProvider
         vector_provider = ChromaVectorProvider()
         vector_provider.delete_by_media_id(media_id)
     except Exception as e:
-        import logging
         logging.getLogger(__name__).warning(f"Failed to cleanup vectors for media {media_id}: {e}")
 
-    # Delete media record (cascade will handle transcripts, scenes, keyframes)
+    # 2. Clean up media-specific filesystem directories safely
+    try:
+        storage_base = Path(settings.media_storage_path).resolve()
+        subdirs = ["originals", "proxies", "thumbnails", "scenes", "keyframes"]
+        for sub in subdirs:
+            media_folder = (storage_base / sub / str(media_id)).resolve()
+            # Ensure path traversal protection: target must be inside storage_base
+            if storage_base in media_folder.parents and media_folder.exists():
+                shutil.rmtree(media_folder, ignore_errors=True)
+    except Exception as fs_err:
+        logging.getLogger(__name__).warning(f"Failed to cleanup files for media {media_id}: {fs_err}")
+
+    # 3. Delete media record (cascade will handle transcripts, scenes, keyframes in DB)
     db.delete(media_asset)
     db.commit()
     return None

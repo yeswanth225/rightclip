@@ -85,21 +85,28 @@ def run_benchmark():
         for kf in keyframes:
             print(f"    - Keyframe id={kf.id}, scene_id={kf.scene_id}, time={kf.timestamp:.2f}s, vector_id={kf.vector_id}")
 
-        # 5. Test Natural Language Visual Query
+        # 5. Test Natural Language Visual Query & verify Keyframe.id mapping
         test_queries = [
             "a bright blue circle or shape",
             "red square screen transition",
             "green nature background",
             "dark scene with text",
         ]
-        print("[5] Testing Natural Language Visual Search Queries:")
+        print("[5] Testing Natural Language Visual Search Queries & keyframe_id integrity:")
         for q in test_queries:
             t_q = time.perf_counter()
             results = visual_service.search_similar_keyframes(query_text=q, top_k=3, media_id=asset.id)
             q_time = (time.perf_counter() - t_q) * 1000
             print(f"    Query: '{q}' ({q_time:.1f} ms)")
             for r in results:
-                print(f"      -> Top Match: sim={r['similarity']:.4f}, scene={r['metadata']['scene_index']}, time={r['metadata']['timestamp']}s")
+                meta = r["metadata"]
+                kf_id = meta.get("keyframe_id")
+                # Verify keyframe exists in database with matching ID
+                db_kf = db.query(Keyframe).filter(Keyframe.id == kf_id).first()
+                assert db_kf is not None, f"Chroma keyframe_id {kf_id} not found in DB!"
+                assert db_kf.media_id == asset.id
+                assert db_kf.timestamp == meta["timestamp"]
+                print(f"      -> Top Match: kf_id={kf_id} (DB verified), sim={r['similarity']:.4f}, scene={meta['scene_index']}, time={meta['timestamp']}s")
 
         # 6. Verify Idempotent Re-indexing (No Duplicates)
         print("[6] Verifying Re-indexing Idempotence...")
