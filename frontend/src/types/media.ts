@@ -4,6 +4,9 @@ export interface MediaAsset {
   source_type: string
   source_url?: string
   status: string
+  file_path?: string
+  proxy_path?: string
+  thumbnail_path?: string
   file_size?: number
   duration?: number
   width?: number
@@ -20,4 +23,15 @@ export interface HealthCheck {
   status: string
   version: string
   timestamp: string
+}
+
+export interface MediaUploadResponse {
+  id: number
+  filename: string
+  status: string
+  message: string
+}
+
+export interface MediaURLIngestRequest {
+  url: string
 }

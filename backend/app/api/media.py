@@ -1,15 +1,27 @@
 """Media management endpoints"""
 
+import asyncio
+from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import get_db
-from app.models import MediaAsset
-from app.schemas.media import MediaAssetResponse
+from app.core.security import SecurityValidator
+from app.models import MediaAsset, MediaStatus
+from app.schemas.media import (
+    MediaAssetResponse,
+    MediaUploadResponse,
+    MediaURLIngestRequest,
+)
+from app.services.media.processor import FFmpegProcessor
+from app.services.media.sources import DirectURLSource, LocalUploadSource
+from app.services.media.validator import MediaValidator
 
 router = APIRouter()
+settings = get_settings()
 
 
 @router.get("/media", response_model=List[MediaAssetResponse])
@@ -29,7 +41,13 @@ async def list_media(
     Returns:
         List of media assets
     """
-    media_assets = db.query(MediaAsset).offset(skip).limit(limit).all()
+    media_assets = (
+        db.query(MediaAsset)
+        .order_by(MediaAsset.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     return media_assets
 
 
@@ -51,7 +69,220 @@ async def get_media(
     media_asset = db.query(MediaAsset).filter(MediaAsset.id == media_id).first()
 
     if not media_asset:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Media asset not found")
 
     return media_asset
+
+
+@router.post("/media/upload", response_model=MediaUploadResponse, status_code=status.HTTP_201_CREATED)
+async def upload_media(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload a media file
+
+    Args:
+        file: Uploaded file
+        db: Database session
+
+    Returns:
+        Created media asset information
+    """
+    # Validate filename
+    is_valid, error = MediaValidator.validate_filename(file.filename)
+    if not is_valid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+
+    # Read file content
+    file_content = await file.read()
+
+    # Validate file size
+    is_valid, error = MediaValidator.validate_file_size(len(file_content))
+    if not is_valid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+
+    # Sanitize filename
+    safe_filename = MediaValidator.sanitize_filename(file.filename)
+
+    # Create media asset record
+    media_asset = MediaAsset(
+        filename=safe_filename,
+        source_type="upload",
+        status=MediaStatus.UPLOADED,
+        file_size=len(file_content),
+    )
+    db.add(media_asset)
+    db.commit()
+    db.refresh(media_asset)
+
+    # Create source
+    source = LocalUploadSource(file_content, safe_filename)
+
+    # Process media in background (async, but simplified for now)
+    asyncio.create_task(_process_media(media_asset.id, source, db))
+
+    return MediaUploadResponse(
+        id=media_asset.id,
+        filename=safe_filename,
+        status=media_asset.status,
+        message="Media uploaded successfully. Processing started.",
+    )
+
+
+@router.post("/media/url", response_model=MediaUploadResponse, status_code=status.HTTP_201_CREATED)
+async def ingest_media_url(
+    request: MediaURLIngestRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Ingest media from URL
+
+    Args:
+        request: URL ingestion request
+        db: Database session
+
+    Returns:
+        Created media asset information
+    """
+    # Validate URL security
+    SecurityValidator.validate_url_or_raise(request.url)
+
+    # Extract filename from URL
+    from urllib.parse import urlparse
+
+    parsed = urlparse(request.url)
+    filename = Path(parsed.path).name or "downloaded_video.mp4"
+
+    # Validate filename
+    is_valid, error = MediaValidator.validate_filename(filename)
+    if not is_valid:
+        # Use generic filename if URL doesn't have valid filename
+        filename = "downloaded_video.mp4"
+
+    # Sanitize filename
+    safe_filename = MediaValidator.sanitize_filename(filename)
+
+    # Create media asset record
+    media_asset = MediaAsset(
+        filename=safe_filename,
+        source_type="url",
+        source_url=request.url,
+        status=MediaStatus.DOWNLOADING,
+    )
+    db.add(media_asset)
+    db.commit()
+    db.refresh(media_asset)
+
+    # Create source
+    source = DirectURLSource(request.url)
+
+    # Process media in background
+    asyncio.create_task(_process_media(media_asset.id, source, db))
+
+    return MediaUploadResponse(
+        id=media_asset.id,
+        filename=safe_filename,
+        status=media_asset.status,
+        message="URL accepted. Downloading and processing started.",
+    )
+
+
+async def _process_media(media_id: int, source, db: Session):
+    """
+    Background task to process uploaded media
+
+    Args:
+        media_id: Media asset ID
+        source: MediaSource instance
+        db: Database session
+    """
+    from sqlalchemy.orm import Session as SessionType
+
+    # Create new DB session for background task
+    from app.core.database import SessionLocal
+
+    db_session: SessionType = SessionLocal()
+
+    try:
+        # Get media asset
+        media_asset = db_session.query(MediaAsset).filter(MediaAsset.id == media_id).first()
+        if not media_asset:
+            return
+
+        # Define storage paths
+        storage_base = Path(settings.media_storage_path)
+        original_dir = storage_base / "originals" / str(media_id)
+        original_path = original_dir / media_asset.filename
+
+        # Fetch media
+        await source.fetch(original_path)
+
+        # Update status
+        media_asset.status = MediaStatus.VALIDATING
+        media_asset.file_path = str(original_path)
+        if not media_asset.file_size:
+            media_asset.file_size = original_path.stat().st_size
+        db_session.commit()
+
+        # Extract metadata
+        metadata = FFmpegProcessor.extract_metadata(original_path)
+
+        # Validate media
+        is_valid, error = FFmpegProcessor.validate_media(
+            metadata, settings.max_video_duration_seconds
+        )
+        if not is_valid:
+            media_asset.status = MediaStatus.FAILED
+            media_asset.error_message = error
+            db_session.commit()
+            return
+
+        # Update metadata
+        media_asset.duration = metadata.get("duration")
+        media_asset.width = metadata.get("width")
+        media_asset.height = metadata.get("height")
+        media_asset.fps = metadata.get("fps")
+        media_asset.video_codec = metadata.get("video_codec")
+        media_asset.audio_codec = metadata.get("audio_codec")
+        media_asset.metadata_json = metadata
+        db_session.commit()
+
+        # Update status to processing
+        media_asset.status = MediaStatus.PROCESSING
+        db_session.commit()
+
+        # Generate proxy
+        proxy_dir = storage_base / "proxies" / str(media_id)
+        proxy_filename = f"{Path(media_asset.filename).stem}_proxy.mp4"
+        proxy_path = proxy_dir / proxy_filename
+
+        FFmpegProcessor.generate_proxy(original_path, proxy_path, target_height=720)
+        media_asset.proxy_path = str(proxy_path)
+        db_session.commit()
+
+        # Extract thumbnail
+        thumbnail_dir = storage_base / "thumbnails" / str(media_id)
+        thumbnail_filename = f"{Path(media_asset.filename).stem}_thumb.jpg"
+        thumbnail_path = thumbnail_dir / thumbnail_filename
+
+        # Extract thumbnail at 10 seconds or 10% of duration, whichever is smaller
+        thumbnail_time = min(10.0, media_asset.duration * 0.1)
+        FFmpegProcessor.extract_thumbnail(original_path, thumbnail_path, thumbnail_time)
+        media_asset.thumbnail_path = str(thumbnail_path)
+        db_session.commit()
+
+        # Mark as ready
+        media_asset.status = MediaStatus.READY
+        db_session.commit()
+
+    except Exception as e:
+        # Mark as failed
+        media_asset = db_session.query(MediaAsset).filter(MediaAsset.id == media_id).first()
+        if media_asset:
+            media_asset.status = MediaStatus.FAILED
+            media_asset.error_message = str(e)
+            db_session.commit()
+
+    finally:
+        db_session.close()

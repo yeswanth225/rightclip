@@ -18,6 +18,7 @@ class MediaSourceType(str, Enum):
 class MediaStatus(str, Enum):
     """Media processing status"""
     UPLOADED = "uploaded"
+    DOWNLOADING = "downloading"
     VALIDATING = "validating"
     PROCESSING = "processing"
     READY = "ready"
@@ -42,6 +43,7 @@ class MediaAsset(Base):
     # File information
     file_path = Column(Text, nullable=True)  # Path to original file
     proxy_path = Column(Text, nullable=True)  # Path to proxy file
+    thumbnail_path = Column(Text, nullable=True)  # Path to thumbnail
     file_size = Column(Integer, nullable=True)  # Size in bytes
 
     # Metadata (will be populated during processing)

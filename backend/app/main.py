@@ -2,8 +2,11 @@
 
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.api import health, media
@@ -47,6 +50,11 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(media.router, prefix="/api", tags=["media"])
+
+# Mount media directory for static file access (thumbnails, proxies)
+media_path = Path(settings.media_storage_path)
+media_path.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=str(media_path)), name="media")
 
 
 @app.get("/")

@@ -14,5 +14,11 @@ pydantic-settings==2.6.1
 # HTTP Client
 httpx==0.28.1
 
+# File Operations
+aiofiles==24.1.0
+
+# Media Processing
+ffmpeg-python==0.2.0
+
 # CORS
 python-dotenv==1.0.1
