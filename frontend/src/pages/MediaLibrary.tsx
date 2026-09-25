@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { mediaService } from '../services/mediaService'
 import { getAssetUrl } from '../utils/assets'
@@ -6,24 +6,33 @@ import type { MediaAsset } from '../types/media'
 
 export default function MediaLibrary() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const { data: mediaAssets, isLoading, error } = useQuery({
     queryKey: ['media'],
     queryFn: () => mediaService.listMedia(0, 50),
-    refetchInterval: 3000, // Poll every 3 seconds for status updates
+    refetchInterval: 3000,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => mediaService.deleteMedia(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['media'] })
+    },
   })
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'ready':
-        return '#4ade80'
+        return 'var(--accent-emerald)'
       case 'failed':
-        return '#ff6b6b'
+        return 'var(--accent-rose)'
       case 'processing':
       case 'validating':
-        return '#fbbf24'
+      case 'downloading':
+        return 'var(--accent-amber)'
       default:
-        return '#94a3b8'
+        return 'var(--text-muted)'
     }
   }
 
@@ -38,7 +47,7 @@ export default function MediaLibrary() {
       case 'processing':
         return 'Processing...'
       case 'ready':
-        return 'Ready'
+        return 'Ready for Search'
       case 'failed':
         return 'Failed'
       default:
@@ -60,118 +69,134 @@ export default function MediaLibrary() {
   }
 
   return (
-    <div style={{ padding: '2rem' }}>
+    <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '2.5rem 1.5rem 4rem' }}>
+      {/* Top action header */}
       <div style={{
-        maxWidth: '1200px',
-        margin: '0 auto',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '2rem',
       }}>
+        <div>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-pure)', letterSpacing: '-0.02em' }}>
+            Media Library
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '2px' }}>
+            Indexed video assets ready for action, dialogue, and multimodal search.
+          </p>
+        </div>
+
+        <button
+          onClick={() => navigate('/')}
+          style={{
+            padding: '0.55rem 1.1rem',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            backgroundColor: 'var(--accent-primary)',
+            color: '#fff',
+            borderRadius: 'var(--radius-sm)',
+          }}
+        >
+          + Ingest New Video
+        </button>
+      </div>
+
+      {isLoading && (
+        <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+          Loading media library...
+        </div>
+      )}
+
+      {error && (
         <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '2rem',
+          padding: '1rem',
+          backgroundColor: 'rgba(244, 63, 94, 0.1)',
+          border: '1px solid rgba(244, 63, 94, 0.3)',
+          borderRadius: 'var(--radius-md)',
+          color: '#fb7185',
         }}>
-          <h1 style={{ fontSize: '2rem', fontWeight: 700 }}>Media Library</h1>
+          Failed to load media library: {String(error)}
+        </div>
+      )}
+
+      {!isLoading && !error && mediaAssets?.length === 0 && (
+        <div style={{
+          textAlign: 'center',
+          padding: '4rem 2rem',
+          backgroundColor: 'var(--bg-surface-0)',
+          border: '1px dashed var(--border-strong)',
+          borderRadius: 'var(--radius-lg)',
+          maxWidth: '600px',
+          margin: '2rem auto',
+        }}>
+          <p style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-pure)', marginBottom: '0.5rem' }}>
+            No media indexed yet
+          </p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+            Upload an MP4 or ingest a video to enable AI multimodal retrieval.
+          </p>
           <button
             onClick={() => navigate('/')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.875rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.05)',
-              color: 'rgba(255, 255, 255, 0.7)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '6px',
-              cursor: 'pointer',
+              padding: '0.65rem 1.25rem',
+              fontSize: '0.9rem',
+              fontWeight: 600,
+              backgroundColor: 'var(--accent-primary)',
+              color: '#fff',
+              borderRadius: 'var(--radius-sm)',
             }}
           >
-            ← Back to Upload
+            Upload Authorized Video
           </button>
         </div>
+      )}
 
-        {isLoading && (
-          <div style={{ textAlign: 'center', padding: '3rem', color: 'rgba(255, 255, 255, 0.5)' }}>
-            Loading media assets...
-          </div>
-        )}
+      {/* Media Grid */}
+      {mediaAssets && mediaAssets.length > 0 && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+          gap: '1.5rem',
+        }}>
+          {mediaAssets.map((media: MediaAsset) => {
+            const thumbUrl = getAssetUrl(media.thumbnail_path)
 
-        {error && (
-          <div style={{
-            padding: '1rem',
-            backgroundColor: 'rgba(220, 38, 38, 0.1)',
-            border: '1px solid rgba(220, 38, 38, 0.3)',
-            borderRadius: '8px',
-            color: '#ff6b6b',
-          }}>
-            Failed to load media library
-          </div>
-        )}
-
-        {!isLoading && !error && mediaAssets?.length === 0 && (
-          <div style={{
-            textAlign: 'center',
-            padding: '3rem',
-            color: 'rgba(255, 255, 255, 0.5)',
-          }}>
-            <p style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>No media uploaded yet</p>
-            <button
-              onClick={() => navigate('/')}
-              style={{
-                padding: '0.75rem 1.5rem',
-                fontSize: '1rem',
-                backgroundColor: '#646cff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-              }}
-            >
-              Upload Your First Video
-            </button>
-          </div>
-        )}
-
-        {mediaAssets && mediaAssets.length > 0 && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '1.5rem',
-          }}>
-            {mediaAssets.map((media: MediaAsset) => {
-              const thumbUrl = getAssetUrl(media.thumbnail_path)
-
-              return (
-                <div
-                  key={media.id}
-                  onClick={() => navigate(`/media/${media.id}`)}
-                  style={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    borderRadius: '12px',
-                    padding: '1rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'
-                    e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.4)'
-                    e.currentTarget.style.transform = 'translateY(-2px)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)'
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'
-                    e.currentTarget.style.transform = 'translateY(0)'
-                  }}
-                >
-                  {/* Real video thumbnail or placeholder */}
+            return (
+              <div
+                key={media.id}
+                onClick={() => navigate(`/media/${media.id}`)}
+                style={{
+                  backgroundColor: 'var(--bg-surface-0)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '1rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border-strong)'
+                  e.currentTarget.style.backgroundColor = 'var(--bg-surface-1)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border-subtle)'
+                  e.currentTarget.style.backgroundColor = 'var(--bg-surface-0)'
+                }}
+              >
+                <div>
+                  {/* Thumbnail viewport */}
                   <div style={{
                     aspectRatio: '16/9',
                     backgroundColor: '#000',
-                    borderRadius: '8px',
-                    marginBottom: '1rem',
+                    borderRadius: 'var(--radius-sm)',
+                    marginBottom: '0.85rem',
                     overflow: 'hidden',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    position: 'relative',
                   }}>
                     {thumbUrl ? (
                       <img
@@ -180,67 +205,97 @@ export default function MediaLibrary() {
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
                     ) : (
-                      <span style={{ fontSize: '2.5rem' }}>🎬</span>
+                      <span style={{ fontSize: '2rem', color: 'var(--text-dim)' }}>🎬</span>
+                    )}
+
+                    {media.duration && (
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '6px',
+                        right: '6px',
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontFamily: 'JetBrains Mono, monospace',
+                        color: '#fff',
+                        fontWeight: 500,
+                      }}>
+                        {formatDuration(media.duration)}
+                      </div>
                     )}
                   </div>
 
-                {/* Filename */}
-                <h3 style={{
-                  fontSize: '1rem',
-                  fontWeight: 600,
-                  marginBottom: '0.5rem',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {media.filename}
-                </h3>
+                  {/* Title & Status */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <h3 style={{
+                      fontSize: '0.95rem',
+                      fontWeight: 600,
+                      color: 'var(--text-pure)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      flex: 1,
+                    }}>
+                      {media.filename}
+                    </h3>
+                  </div>
 
-                {/* Status */}
-                <div style={{
-                  display: 'inline-block',
-                  padding: '0.25rem 0.75rem',
-                  fontSize: '0.75rem',
-                  fontWeight: 500,
-                  backgroundColor: `${getStatusColor(media.status)}20`,
-                  color: getStatusColor(media.status),
-                  borderRadius: '12px',
-                  marginBottom: '0.75rem',
-                }}>
-                  {getStatusLabel(media.status)}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                    <span style={{
+                      display: 'inline-block',
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      backgroundColor: getStatusColor(media.status),
+                    }} />
+                    <span style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 500,
+                      color: getStatusColor(media.status),
+                    }}>
+                      {getStatusLabel(media.status)}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Metadata */}
+                {/* Footer metadata & actions */}
                 <div style={{
                   display: 'flex',
-                  gap: '1rem',
-                  fontSize: '0.875rem',
-                  color: 'rgba(255, 255, 255, 0.6)',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid var(--border-subtle)',
+                  fontSize: '0.75rem',
+                  color: 'var(--text-muted)',
+                  fontFamily: 'JetBrains Mono, monospace',
                 }}>
-                  <span>⏱ {formatDuration(media.duration)}</span>
-                  <span>📊 {media.width}×{media.height || '—'}</span>
-                  <span>💾 {formatFileSize(media.file_size)}</span>
+                  <span>{media.width ? `${media.width}×${media.height}` : '—'}</span>
+                  <span>{formatFileSize(media.file_size)}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (confirm(`Delete media '${media.filename}' and all indexed vectors?`)) {
+                        deleteMutation.mutate(media.id)
+                      }
+                    }}
+                    style={{
+                      background: 'transparent',
+                      color: 'var(--text-dim)',
+                      fontSize: '0.8rem',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                    }}
+                    title="Delete media asset"
+                  >
+                    🗑
+                  </button>
                 </div>
-
-                {/* Error message */}
-                {media.error_message && (
-                  <div style={{
-                    marginTop: '0.75rem',
-                    padding: '0.5rem',
-                    fontSize: '0.75rem',
-                    backgroundColor: 'rgba(220, 38, 38, 0.1)',
-                    color: '#ff6b6b',
-                    borderRadius: '6px',
-                  }}>
-                    {media.error_message}
-                  </div>
-                )}
               </div>
             )
           })}
         </div>
       )}
     </div>
-  </div>
-)
+  )
 }

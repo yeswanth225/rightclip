@@ -1,15 +1,18 @@
 """Unified Search Schemas"""
 
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 
 class SearchMode(str, Enum):
     """Supported search retrieval modes"""
-    HYBRID = "hybrid"
-    TRANSCRIPT = "transcript"
-    VISUAL = "visual"
+    HYBRID = "hybrid"          # Everything (Multimodal Fusion)
+    ACTION = "action"          # Temporal action/event matching
+    DIALOGUE = "dialogue"      # Exact & semantic transcript retrieval
+    TRANSCRIPT = "transcript"  # Dialogue alias
+    VISUAL = "visual"          # Visual similarity
+    PERSON = "person"          # Reference face/person matching
 
 
 class SearchMatchEvidence(BaseModel):
@@ -20,7 +23,10 @@ class SearchMatchEvidence(BaseModel):
     keyframe_id: Optional[int] = None
     keyframe_path: Optional[str] = None
     visual_similarity: float = 0.0
+    person_score: float = 0.0
+    action_score: float = 0.0
     agreement: bool = False
+    match_types: List[str] = Field(default_factory=list)  # ["visual", "action", "dialogue", "person"]
     explanation: str
 
 
@@ -44,7 +50,17 @@ class UnifiedSearchResponse(BaseModel):
     mode: str
     total_results: int
     latency_ms: float
-    transcript_latency_ms: float
-    visual_latency_ms: float
-    fusion_latency_ms: float
+    transcript_latency_ms: float = 0.0
+    visual_latency_ms: float = 0.0
+    person_latency_ms: float = 0.0
+    fusion_latency_ms: float = 0.0
     results: List[UnifiedSearchResult]
+
+
+class MultimodalSearchRequest(BaseModel):
+    """Payload for POST /api/search with optional reference image and mode"""
+    query: Optional[str] = None
+    reference_image_base64: Optional[str] = None
+    media_id: Optional[int] = None
+    mode: SearchMode = SearchMode.HYBRID
+    limit: Optional[int] = None

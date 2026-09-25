@@ -119,6 +119,8 @@ export interface VisualSearchResponse {
   results: VisualSearchMatch[]
 }
 
+export type SearchModeType = 'hybrid' | 'action' | 'dialogue' | 'visual' | 'person'
+
 export interface SearchMatchEvidence {
   transcript_text?: string
   transcript_segment_id?: number
@@ -126,7 +128,10 @@ export interface SearchMatchEvidence {
   keyframe_id?: number
   keyframe_path?: string
   visual_similarity: number
+  person_score?: number
+  action_score?: number
   agreement: boolean
+  match_types?: string[]
   explanation: string
 }
 
@@ -145,11 +150,12 @@ export interface UnifiedSearchResult {
 
 export interface UnifiedSearchResponse {
   query: string
-  mode: 'hybrid' | 'transcript' | 'visual'
+  mode: SearchModeType | string
   total_results: number
   latency_ms: number
   transcript_latency_ms: number
   visual_latency_ms: number
+  person_latency_ms?: number
   fusion_latency_ms: number
   results: UnifiedSearchResult[]
 }

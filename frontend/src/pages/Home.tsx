@@ -11,109 +11,102 @@ export default function Home() {
 
   const { refetch } = useQuery({
     queryKey: ['media'],
-    queryFn: () => mediaService.listMedia(),
+    queryFn: () => mediaService.listMedia(0, 10),
   })
 
   const handleUploadSuccess = (mediaId: number) => {
     refetch()
     setTimeout(() => {
       navigate(`/media/${mediaId}`)
-    }, 1200)
+    }, 1000)
   }
 
   return (
     <div style={{
       maxWidth: '860px',
       margin: '0 auto',
-      padding: '3.5rem 1.5rem',
+      padding: '3.5rem 1.5rem 4rem',
     }}>
-      {/* Hero Section */}
-      <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+      {/* Value prop & Headline */}
+      <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
         <div style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: '0.5rem',
-          padding: '0.35rem 0.85rem',
-          backgroundColor: 'rgba(99, 102, 241, 0.12)',
+          gap: '0.4rem',
+          padding: '0.3rem 0.75rem',
+          backgroundColor: 'rgba(99, 102, 241, 0.1)',
           border: '1px solid rgba(99, 102, 241, 0.25)',
-          borderRadius: '9999px',
+          borderRadius: 'var(--radius-pill)',
           color: '#a5b4fc',
-          fontSize: '0.8rem',
+          fontSize: '0.75rem',
           fontWeight: 600,
-          marginBottom: '1.25rem',
+          marginBottom: '1rem',
+          letterSpacing: '0.02em',
         }}>
-          ⚡ Local-First Multimodal AI Video Search
+          AI MULTIMODAL VIDEO SEARCH & MOMENT RETRIEVAL
         </div>
 
         <h1 style={{
-          fontSize: '3.25rem',
+          fontSize: '2.5rem',
           fontWeight: 800,
           letterSpacing: '-0.03em',
           lineHeight: 1.15,
-          marginBottom: '1rem',
-          background: 'linear-gradient(180deg, #ffffff 0%, #cbd5e1 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
+          marginBottom: '0.75rem',
+          color: 'var(--text-pure)',
         }}>
-          Find any moment in your video.
+          Search video by actions, dialogue, and reference images.
         </h1>
 
         <p style={{
-          fontSize: '1.125rem',
-          color: 'rgba(255, 255, 255, 0.65)',
-          maxWidth: '620px',
-          margin: '0 auto 2rem',
-          lineHeight: 1.6,
+          fontSize: '1rem',
+          color: 'var(--text-secondary)',
+          maxWidth: '580px',
+          margin: '0 auto 1.75rem',
+          lineHeight: 1.5,
         }}>
-          Search across spoken words and visual scenes using faster-whisper and OpenCLIP ViT-B/32, powered completely locally on your machine.
+          Describe physical events over time, search spoken words, or upload a reference face to locate exact video clips.
         </p>
 
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <button
             onClick={() => navigate('/search')}
             style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '0.95rem',
+              padding: '0.65rem 1.4rem',
+              fontSize: '0.9rem',
               fontWeight: 600,
-              backgroundColor: '#6366f1',
+              backgroundColor: 'var(--accent-primary)',
               color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              boxShadow: '0 4px 14px rgba(99, 102, 241, 0.4)',
+              borderRadius: 'var(--radius-sm)',
             }}
           >
-            🔍 Open AI Search
+            🔍 Open Search Workspace
           </button>
           <button
             onClick={() => navigate('/library')}
             style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '0.95rem',
+              padding: '0.65rem 1.4rem',
+              fontSize: '0.9rem',
               fontWeight: 500,
-              backgroundColor: 'rgba(255, 255, 255, 0.05)',
-              color: 'rgba(255, 255, 255, 0.85)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              borderRadius: '8px',
-              cursor: 'pointer',
+              backgroundColor: 'var(--bg-surface-0)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-sm)',
             }}
           >
-            📚 Media Library
+            Media Library
           </button>
         </div>
       </div>
 
-      {/* Ingestion Container */}
+      {/* Ingestion Box */}
       <div style={{
-        backgroundColor: 'rgba(255, 255, 255, 0.02)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '16px',
+        backgroundColor: 'var(--bg-surface-0)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: 'var(--radius-lg)',
         padding: '2rem',
-        backdropFilter: 'blur(8px)',
+        boxShadow: '0 8px 30px rgba(0, 0, 0, 0.4)',
       }}>
-        <div style={{ marginBottom: '1.5rem' }}>
-          <UploadZone onUploadSuccess={handleUploadSuccess} />
-        </div>
+        <UploadZone onUploadSuccess={handleUploadSuccess} />
 
         <div style={{
           display: 'flex',
@@ -121,30 +114,29 @@ export default function Home() {
           gap: '1rem',
           margin: '1.5rem 0',
         }}>
-          <div style={{ flex: 1, height: '1px', backgroundColor: 'rgba(255, 255, 255, 0.08)' }} />
-          <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            or ingest from url
+          <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-subtle)' }} />
+          <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            or ingest direct video url
           </span>
-          <div style={{ flex: 1, height: '1px', backgroundColor: 'rgba(255, 255, 255, 0.08)' }} />
+          <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-subtle)' }} />
         </div>
 
         <div>
           <button
             onClick={() => setShowURLIngest(!showURLIngest)}
             style={{
-              padding: '0.65rem 1.25rem',
-              fontSize: '0.875rem',
+              padding: '0.6rem 1rem',
+              fontSize: '0.85rem',
               fontWeight: 500,
-              backgroundColor: showURLIngest ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.03)',
-              color: 'rgba(255, 255, 255, 0.85)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              borderRadius: '8px',
-              cursor: 'pointer',
+              backgroundColor: showURLIngest ? 'rgba(255, 255, 255, 0.08)' : 'var(--bg-surface-1)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-sm)',
               width: '100%',
               marginBottom: showURLIngest ? '1rem' : 0,
             }}
           >
-            {showURLIngest ? '✕ Close URL Ingest' : '🔗 Ingest Media from Direct URL'}
+            {showURLIngest ? '✕ Hide Direct URL Ingest' : '🔗 Ingest Media from Direct Video URL'}
           </button>
 
           {showURLIngest && (

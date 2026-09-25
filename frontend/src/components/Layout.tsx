@@ -2,54 +2,54 @@ import { NavLink, Outlet } from 'react-router-dom'
 
 export default function Layout() {
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-app)' }}>
       <header style={{
         position: 'sticky',
         top: 0,
         zIndex: 50,
-        padding: '0.85rem 2rem',
-        backgroundColor: 'rgba(9, 10, 15, 0.8)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        padding: '0 2rem',
+        height: '64px',
+        backgroundColor: 'rgba(8, 9, 13, 0.85)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
       }}>
-        <NavLink to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+        <NavLink to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
           <div style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '8px',
-            background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
+            width: '30px',
+            height: '30px',
+            borderRadius: 'var(--radius-sm)',
+            background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             fontWeight: 800,
-            fontSize: '1rem',
+            fontSize: '0.9rem',
             color: '#fff',
-            boxShadow: '0 4px 12px rgba(99, 102, 241, 0.35)',
+            boxShadow: '0 2px 8px rgba(99, 102, 241, 0.4)',
           }}>
-            C
+            CF
           </div>
-          <span style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.02em', color: '#fff' }}>
+          <span style={{ fontSize: '1.1rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-pure)' }}>
             ClipFinder
           </span>
         </NavLink>
 
-        <nav style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <nav style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
           <NavLink
             to="/"
             end
             style={({ isActive }) => ({
-              padding: '0.45rem 0.9rem',
-              borderRadius: '6px',
-              fontSize: '0.875rem',
+              padding: '0.4rem 0.85rem',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '0.85rem',
               fontWeight: 500,
               textDecoration: 'none',
-              color: isActive ? '#fff' : 'rgba(255, 255, 255, 0.65)',
+              color: isActive ? 'var(--text-pure)' : 'var(--text-secondary)',
               backgroundColor: isActive ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-              transition: 'all 0.15s ease',
             })}
           >
             Upload
@@ -57,30 +57,28 @@ export default function Layout() {
           <NavLink
             to="/search"
             style={({ isActive }) => ({
-              padding: '0.45rem 0.9rem',
-              borderRadius: '6px',
-              fontSize: '0.875rem',
+              padding: '0.4rem 0.85rem',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '0.85rem',
               fontWeight: 500,
               textDecoration: 'none',
-              color: isActive ? '#a5b4fc' : 'rgba(255, 255, 255, 0.65)',
+              color: isActive ? '#a5b4fc' : 'var(--text-secondary)',
               backgroundColor: isActive ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
               border: isActive ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid transparent',
-              transition: 'all 0.15s ease',
             })}
           >
-            🔍 AI Search
+            🔍 Search Moments
           </NavLink>
           <NavLink
             to="/library"
             style={({ isActive }) => ({
-              padding: '0.45rem 0.9rem',
-              borderRadius: '6px',
-              fontSize: '0.875rem',
+              padding: '0.4rem 0.85rem',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '0.85rem',
               fontWeight: 500,
               textDecoration: 'none',
-              color: isActive ? '#fff' : 'rgba(255, 255, 255, 0.65)',
+              color: isActive ? 'var(--text-pure)' : 'var(--text-secondary)',
               backgroundColor: isActive ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-              transition: 'all 0.15s ease',
             })}
           >
             Library
@@ -94,13 +92,13 @@ export default function Layout() {
 
       <footer style={{
         padding: '1.25rem 2rem',
-        borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-        fontSize: '0.8rem',
-        color: 'rgba(255, 255, 255, 0.4)',
+        borderTop: '1px solid var(--border-subtle)',
+        fontSize: '0.75rem',
+        color: 'var(--text-muted)',
         textAlign: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.2)',
+        backgroundColor: 'var(--bg-surface-0)',
       }}>
-        <p>ClipFinder v0.1.0 — Local AI-Powered Multimodal Video Search & Indexing</p>
+        ClipFinder — Local-First Multimodal Video Search Intelligence & Precision Moment Retrieval
       </footer>
     </div>
   )

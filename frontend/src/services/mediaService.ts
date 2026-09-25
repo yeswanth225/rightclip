@@ -7,11 +7,15 @@ import type {
   SceneListResponse,
   Transcript,
   VisualSearchResponse,
+  UnifiedSearchResponse,
+  SearchModeType,
+  Clip,
+  ClipListResponse,
 } from '../types/media'
 
 export const mediaService = {
   // List media assets
-  async listMedia(skip = 0, limit = 20): Promise<MediaAsset[]> {
+  async listMedia(skip = 0, limit = 50): Promise<MediaAsset[]> {
     const response = await api.get('/api/media', {
       params: { skip, limit },
     })
@@ -22,6 +26,11 @@ export const mediaService = {
   async getMedia(id: number): Promise<MediaAsset> {
     const response = await api.get(`/api/media/${id}`)
     return response.data
+  },
+
+  // Delete media asset
+  async deleteMedia(id: number): Promise<void> {
+    await api.delete(`/api/media/${id}`)
   },
 
   // Upload media file
@@ -98,22 +107,34 @@ export const mediaService = {
     return response.data
   },
 
-  // Unified AI Multimodal Search
+  // Unified AI Multimodal Search (GET / POST)
   async searchUnified(
-    query: string,
+    query?: string,
     mediaId?: number,
-    mode: 'hybrid' | 'transcript' | 'visual' = 'hybrid',
-    limit = 15
-  ): Promise<import('../types/media').UnifiedSearchResponse> {
-    const response = await api.get('/api/search', {
-      params: {
-        q: query,
-        ...(mediaId !== undefined ? { media_id: mediaId } : {}),
+    mode: SearchModeType = 'hybrid',
+    limit = 20,
+    referenceImageBase64?: string
+  ): Promise<UnifiedSearchResponse> {
+    if (referenceImageBase64) {
+      const response = await api.post('/api/search', {
+        query: query || '',
+        reference_image_base64: referenceImageBase64,
+        media_id: mediaId,
         mode,
         limit,
-      },
-    })
-    return response.data
+      })
+      return response.data
+    } else {
+      const response = await api.get('/api/search', {
+        params: {
+          q: query || '',
+          ...(mediaId !== undefined ? { media_id: mediaId } : {}),
+          mode,
+          limit,
+        },
+      })
+      return response.data
+    }
   },
 
   // Save / Create Clip
@@ -124,19 +145,19 @@ export const mediaService = {
     end_time: number
     search_query?: string
     evidence_json?: Record<string, any>
-  }): Promise<import('../types/media').Clip> {
+  }): Promise<Clip> {
     const response = await api.post('/api/clips', clip)
     return response.data
   },
 
   // Get Media Clips
-  async getMediaClips(mediaId: number): Promise<import('../types/media').ClipListResponse> {
+  async getMediaClips(mediaId: number): Promise<ClipListResponse> {
     const response = await api.get(`/api/media/${mediaId}/clips`)
     return response.data
   },
 
   // Get Single Clip
-  async getClip(clipId: number): Promise<import('../types/media').Clip> {
+  async getClip(clipId: number): Promise<Clip> {
     const response = await api.get(`/api/clips/${clipId}`)
     return response.data
   },
@@ -145,7 +166,7 @@ export const mediaService = {
   async updateClip(
     clipId: number,
     update: { title?: string; start_time?: number; end_time?: number }
-  ): Promise<import('../types/media').Clip> {
+  ): Promise<Clip> {
     const response = await api.put(`/api/clips/${clipId}`, update)
     return response.data
   },
@@ -155,7 +176,3 @@ export const mediaService = {
     await api.delete(`/api/clips/${clipId}`)
   },
 }
-
-
-
-

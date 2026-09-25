@@ -95,57 +95,61 @@ MAX_VIDEO_DURATION_SECONDS=7200
 
 ## 🛠️ Development Phases
 
-### Phase 1 — Foundation ✅
-- [x] Repository structure
-- [x] Backend skeleton
-- [x] Frontend skeleton
-- [x] Database setup
-- [ ] Basic UI shell
+## 📖 Search Capabilities & Multimodal Architecture
 
-### Phase 2 — Media (Next)
-- [ ] Upload pipeline
-- [ ] URL ingestion
-- [ ] FFmpeg metadata extraction
-- [ ] Proxy generation
-- [ ] Video playback
+ClipFinder provides unified AI-powered video moment retrieval combining:
+1. **Natural-Language Action / Event Search:** Finds physical actions, motion transitions, and scene events over time (e.g., *"character opens the car door and gets inside"*).
+2. **Dialogue Search:** Exact and semantic matching across Whisper/faster-whisper spoken speech segments.
+3. **Person / Reference Search:** Face and appearance matching via reference photos across indexed keyframes.
+4. **Image + Text Multimodal Search:** Combines person identity with physical action or dialogue prompts (e.g., `[Photo]` + *"when this person enters the room"*).
+5. **Temporal Moment Retrieval:** Instead of returning isolated raw frames, results represent temporal moments enveloped with visual evidence, dialogue quotes, person evidence, and scene context.
 
-### Phase 3 — Transcript Search
-- [ ] Whisper integration
-- [ ] Timestamped transcription
-- [ ] Transcript search
+```text
+                         USER QUERY
+                              │
+             ┌────────────────┼────────────────┐
+             │                │                │
+             ▼                ▼                ▼
+          TEXT             IMAGE           PERSON
+             │                │             REF
+             ▼                ▼                ▼
+       Query Analysis     Visual Query    Face/Person
+             │             Embedding       Embedding
+             │                │                │
+             └────────────────┼────────────────┘
+                              ▼
+                       Retrieval Layer
+                              │
+            ┌─────────────────┼─────────────────┐
+            ▼                 ▼                 ▼
+        Transcript         Visual            Person
+        Retrieval         Retrieval         Retrieval
+            │                 │                 │
+            └─────────────────┼─────────────────┘
+                              ▼
+                      Temporal Fusion
+                              │
+                              ▼
+                     Event / Moment Groups
+                              │
+                              ▼
+                        Final Ranking
+                              │
+                              ▼
+                     Timestamped Results
+```
 
-### Phase 4 — Scene Detection
-- [ ] PySceneDetect integration
-- [ ] Scene thumbnails
-- [ ] Scene index
+## 🛠️ Development Status
 
-### Phase 5 — Semantic Search
-- [ ] Embedding generation
-- [ ] Vector search
-- [ ] Query understanding
-
-### Phase 6 — Visual Search
-- [ ] Vision model integration
-- [ ] Visual descriptions
-- [ ] Visual embeddings
-
-### Phase 7 — Clip Editor
-- [ ] Timeline UI
-- [ ] Start/end adjustment
-- [ ] Preview with frame stepping
-- [ ] Keyboard shortcuts
-
-### Phase 8 — Export
-- [ ] FFmpeg clipping
-- [ ] Export jobs
-- [ ] Quality options
-- [ ] Download management
-
-### Phase 9 — UX Polish
-- [ ] Loading states
-- [ ] Error handling
-- [ ] Responsive design
-- [ ] Accessibility
+- [x] Phase 1 — Foundation (FastAPI + React 18 + Database)
+- [x] Phase 2 — Media ingestion, FFmpeg proxy & thumbnail processing
+- [x] Phase 3 — Whisper / faster-whisper speech transcription & timestamping
+- [x] Phase 4 — PySceneDetect scene boundary detection
+- [x] Phase 5 — OpenCLIP ViT-B/32 keyframe indexing & ChromaDB vector storage
+- [x] Phase 6 — Unified transcript + visual rank fusion
+- [x] Phase 6.5 — Temporal Action Search, Semantic Dialogue, Person Reference, & Search UX Redesign
+- [x] Phase 7 — Precision Clip Editor (boundary trimming & save clip selection)
+- [ ] Phase 8 — FFmpeg Clip Export & Render Jobs
 
 ## ⚠️ Important Notes
 

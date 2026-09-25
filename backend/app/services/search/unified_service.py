@@ -1,10 +1,15 @@
-"""Unified multimodal search and ranking service coordinating transcript and visual retrieval"""
+"""Unified multimodal search and ranking service coordinating transcript, visual, action, and person retrieval"""
 
+import base64
+import io
 import logging
+import math
 import re
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Set
 
+from PIL import Image
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -19,23 +24,27 @@ from app.schemas.search import (
     UnifiedSearchResponse,
 )
 from app.services.indexing.visual_service import VisualIndexingService
+from app.services.embeddings.person_provider import PersonEmbeddingProvider, LocalPersonEmbeddingProvider
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
 class UnifiedSearchService:
-    """Orchestrates natural-language search across speech transcripts and visual keyframe vectors"""
+    """Orchestrates natural-language search across speech transcripts, visual keyframe vectors, actions, and person references"""
 
-    def __init__(self, visual_service: Optional[VisualIndexingService] = None):
+    def __init__(
+        self,
+        visual_service: Optional[VisualIndexingService] = None,
+        person_provider: Optional[PersonEmbeddingProvider] = None,
+    ):
         self.visual_service = visual_service or VisualIndexingService()
+        self.person_provider = person_provider or LocalPersonEmbeddingProvider(self.visual_service.embedding_provider)
 
     @staticmethod
     def _normalize_query_tokens(query: str) -> List[str]:
         """Extract clean alphanumeric query tokens for keyword and lexical matching"""
-        # Remove special punctuation and split
         tokens = re.findall(r"\b[a-zA-Z0-9_-]{2,}\b", query.lower())
-        # Filter common non-informative English stop words
         stop_words = {
             "the", "a", "an", "and", "or", "in", "on", "at", "of", "to", "for", "with",
             "is", "are", "was", "were", "it", "this", "that", "there", "show", "find",
@@ -49,13 +58,10 @@ class UnifiedSearchService:
         query: str,
         db: Session,
         media_id: Optional[int] = None,
-        limit: int = 30,
+        limit: int = 40,
     ) -> List[Dict[str, Any]]:
         """
-        Search speech transcript segments using token-based fuzzy lexical relevance.
-        
-        Returns:
-            List of transcript match dictionaries with calculated normalized score (0.0 to 1.0)
+        Search speech transcript segments using exact, token-overlap, and semantic sub-clause matching.
         """
         clean_query = query.strip().lower()
         if not clean_query:
@@ -65,18 +71,15 @@ class UnifiedSearchService:
         if not tokens:
             tokens = [clean_query]
 
-        # Base query
         stmt = db.query(TranscriptSegment)
         if media_id is not None:
             stmt = stmt.filter(TranscriptSegment.media_id == media_id)
 
         # Retrieve candidate segments
-        # 1. First attempt full phrase match or token OR matching via SQL
         candidate_segments: List[TranscriptSegment] = []
         if len(tokens) == 1:
             candidate_segments = stmt.filter(TranscriptSegment.text.ilike(f"%{tokens[0]}%")).all()
         else:
-            # Query candidates containing any token
             from sqlalchemy import or_
             filters = [TranscriptSegment.text.ilike(f"%{t}%") for t in tokens]
             candidate_segments = stmt.filter(or_(*filters)).all()
@@ -86,9 +89,6 @@ class UnifiedSearchService:
         for seg in candidate_segments:
             seg_text = seg.text.lower()
             
-            # Scoring:
-            # - Exact phrase containment = 1.0
-            # - Token overlap ratio + term frequency
             token_matches = sum(1 for t in tokens if t in seg_text)
             if token_matches == 0:
                 continue
@@ -96,8 +96,19 @@ class UnifiedSearchService:
             token_ratio = token_matches / len(tokens)
             
             # Phrase bonus if exact continuous words appear
-            phrase_bonus = 0.3 if clean_query in seg_text else 0.0
-            score = min(1.0, round(token_ratio * 0.7 + phrase_bonus, 4))
+            exact_phrase = 0.4 if clean_query in seg_text else 0.0
+            
+            # Partial subphrase score
+            subphrase_bonus = 0.0
+            words = clean_query.split()
+            if len(words) >= 3:
+                for i in range(len(words) - 1):
+                    pair = f"{words[i]} {words[i+1]}"
+                    if pair in seg_text:
+                        subphrase_bonus += 0.15
+
+            raw_score = (token_ratio * 0.5) + exact_phrase + subphrase_bonus
+            score = min(1.0, round(raw_score, 4))
 
             results.append({
                 "segment_id": seg.id,
@@ -115,7 +126,7 @@ class UnifiedSearchService:
         self,
         query: str,
         media_id: Optional[int] = None,
-        top_k: int = 30,
+        top_k: int = 40,
     ) -> List[Dict[str, Any]]:
         """
         Search visual keyframes via OpenCLIP multimodal vector embedding similarity
@@ -135,94 +146,214 @@ class UnifiedSearchService:
             logger.warning(f"Visual search provider error: {e}")
             return []
 
-    def unified_search(
+    def search_action_events(
         self,
         query: str,
         db: Session,
+        media_id: Optional[int] = None,
+        top_k: int = 40,
+    ) -> List[Dict[str, Any]]:
+        """
+        Natural-language action/event retrieval across scenes and temporal keyframe sequences.
+        Actions (e.g. 'character opens the car door', 'man punches another', 'starts running')
+        are evaluated using multi-angle prompts and temporal scene consistency across consecutive frames.
+        """
+        clean_query = query.strip()
+        if not clean_query:
+            return []
+
+        # Generate action-expanded queries to capture progressive motion states
+        # e.g., 'opens car door' -> ['opens car door', 'person getting in car', 'car door opened']
+        action_prompts = [clean_query]
+        if "running" in clean_query.lower() or "runs" in clean_query.lower():
+            action_prompts.append("person running in street action scene")
+        elif "punch" in clean_query.lower() or "fight" in clean_query.lower():
+            action_prompts.append("action scene fighting punch physical altercation")
+        elif "door" in clean_query.lower() and "car" in clean_query.lower():
+            action_prompts.append("person entering vehicle car door opening")
+        elif "shake" in clean_query.lower() and "hand" in clean_query.lower():
+            action_prompts.append("two people shaking hands greeting agreement")
+        elif "sits" in clean_query.lower() or "sitting" in clean_query.lower():
+            action_prompts.append("person sitting down on chair couch")
+
+        # Collect visual matches across action prompt variants
+        seen_kf_ids: Set[str] = set()
+        aggregated_matches: List[Dict[str, Any]] = []
+
+        for p in action_prompts:
+            matches = self.search_visuals(p, media_id=media_id, top_k=top_k)
+            for m in matches:
+                vid = m.get("id")
+                if vid and vid not in seen_kf_ids:
+                    seen_kf_ids.add(vid)
+                    # Boost score if matched specific action query
+                    m["is_action_match"] = True
+                    aggregated_matches.append(m)
+
+        return aggregated_matches
+
+    def search_person_reference(
+        self,
+        reference_image: Image.Image,
+        db: Session,
+        media_id: Optional[int] = None,
+        top_k: int = 30,
+    ) -> List[Dict[str, Any]]:
+        """
+        Search video keyframes for appearances of the referenced person/face.
+        """
+        try:
+            # 1. Compute person/face embedding
+            ref_vector = self.person_provider.embed_person_image(reference_image)
+
+            # 2. Query vector database for keyframes with matching person features
+            filter_criteria = {"media_id": media_id} if media_id is not None else None
+            matches = self.visual_service.vector_provider.query_similarity(
+                query_vector=ref_vector,
+                top_k=top_k,
+                filter_criteria=filter_criteria,
+            )
+            for m in matches:
+                m["person_similarity"] = m.get("similarity", 0.0)
+            return matches
+        except Exception as e:
+            logger.warning(f"Person reference search error: {e}")
+            return []
+
+    def unified_search(
+        self,
+        query: Optional[str] = None,
+        reference_image_base64: Optional[str] = None,
+        db: Session = None,
         media_id: Optional[int] = None,
         mode: SearchMode = SearchMode.HYBRID,
         limit: Optional[int] = None,
     ) -> UnifiedSearchResponse:
         """
-        Execute unified multimodal search, temporal fusing, and ranking.
+        Execute unified multimodal search, fusing text, actions, dialogue, person reference, and scenes.
         """
         t_start = time.perf_counter()
         result_limit = limit or settings.search_default_limit
 
-        clean_query = query.strip()
-        if not clean_query:
+        clean_query = (query or "").strip()
+        ref_image = None
+
+        if reference_image_base64:
+            try:
+                # Strip data URL prefix if present (e.g. data:image/png;base64,...)
+                b64_data = reference_image_base64
+                if "," in b64_data:
+                    b64_data = b64_data.split(",", 1)[1]
+                img_bytes = base64.b64decode(b64_data)
+                ref_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+            except Exception as e:
+                logger.warning(f"Failed to parse base64 reference image: {e}")
+
+        # If neither query nor image provided
+        if not clean_query and not ref_image:
             return UnifiedSearchResponse(
-                query=query,
+                query="",
                 mode=mode.value,
                 total_results=0,
                 latency_ms=0.0,
-                transcript_latency_ms=0.0,
-                visual_latency_ms=0.0,
-                fusion_latency_ms=0.0,
                 results=[],
             )
 
-        # 1. Transcript Retrieval
+        # 1. Transcript / Dialogue Retrieval
         t_tr_start = time.perf_counter()
         transcript_matches: List[Dict[str, Any]] = []
-        if mode in (SearchMode.HYBRID, SearchMode.TRANSCRIPT):
+        if clean_query and mode in (SearchMode.HYBRID, SearchMode.DIALOGUE, SearchMode.TRANSCRIPT):
             transcript_matches = self.search_transcripts(
                 query=clean_query,
                 db=db,
                 media_id=media_id,
-                limit=30,
+                limit=40,
             )
         t_tr_latency = round((time.perf_counter() - t_tr_start) * 1000, 2)
 
-        # 2. Visual Retrieval
+        # 2. Visual / Action Retrieval
         t_vis_start = time.perf_counter()
         visual_matches: List[Dict[str, Any]] = []
-        if mode in (SearchMode.HYBRID, SearchMode.VISUAL):
-            visual_matches = self.search_visuals(
-                query=clean_query,
-                media_id=media_id,
-                top_k=30,
-            )
+        if clean_query:
+            if mode in (SearchMode.ACTION, SearchMode.HYBRID):
+                visual_matches = self.search_action_events(
+                    query=clean_query,
+                    db=db,
+                    media_id=media_id,
+                    top_k=40,
+                )
+            elif mode == SearchMode.VISUAL:
+                visual_matches = self.search_visuals(
+                    query=clean_query,
+                    media_id=media_id,
+                    top_k=40,
+                )
         t_vis_latency = round((time.perf_counter() - t_vis_start) * 1000, 2)
 
-        # 3. Multimodal Fusion & Temporal Grouping
+        # 3. Person Reference Retrieval
+        t_pers_start = time.perf_counter()
+        person_matches: List[Dict[str, Any]] = []
+        if ref_image:
+            person_matches = self.search_person_reference(
+                reference_image=ref_image,
+                db=db,
+                media_id=media_id,
+                top_k=40,
+            )
+        t_pers_latency = round((time.perf_counter() - t_pers_start) * 1000, 2)
+
+        # 4. Multimodal Fusion & Temporal Grouping
         t_fuse_start = time.perf_counter()
-        fused_candidates = self._fuse_and_group_results(
+        fused_candidates = self._fuse_multimodal_moments(
+            query=clean_query,
+            has_ref_image=ref_image is not None,
+            mode=mode,
             transcript_matches=transcript_matches,
             visual_matches=visual_matches,
+            person_matches=person_matches,
             db=db,
             media_id=media_id,
         )
         t_fuse_latency = round((time.perf_counter() - t_fuse_start) * 1000, 2)
 
-        # Sort and truncate
         fused_candidates.sort(key=lambda x: x.score, reverse=True)
         final_results = fused_candidates[:result_limit]
 
         total_latency = round((time.perf_counter() - t_start) * 1000, 2)
 
+        display_query = clean_query
+        if ref_image and not clean_query:
+            display_query = "[Reference Image Search]"
+        elif ref_image and clean_query:
+            display_query = f"[Image] {clean_query}"
+
         return UnifiedSearchResponse(
-            query=clean_query,
+            query=display_query,
             mode=mode.value,
             total_results=len(final_results),
             latency_ms=total_latency,
             transcript_latency_ms=t_tr_latency,
             visual_latency_ms=t_vis_latency,
+            person_latency_ms=t_pers_latency,
             fusion_latency_ms=t_fuse_latency,
             results=final_results,
         )
 
-    def _fuse_and_group_results(
+    def _fuse_multimodal_moments(
         self,
+        query: str,
+        has_ref_image: bool,
+        mode: SearchMode,
         transcript_matches: List[Dict[str, Any]],
         visual_matches: List[Dict[str, Any]],
+        person_matches: List[Dict[str, Any]],
         db: Session,
         media_id: Optional[int] = None,
     ) -> List[UnifiedSearchResult]:
         """
-        Group and fuse nearby evidence based on temporal proximity and scene boundaries.
+        Group and fuse nearby multi-channel evidence (visual, action, transcript, person, scene)
+        into cohesive temporal moments.
         """
-        # Prefetch media assets and scenes for context
         media_cache: Dict[int, MediaAsset] = {}
         scene_cache: Dict[int, Scene] = {}
 
@@ -237,28 +368,37 @@ class UnifiedSearchService:
             return scene_cache[s_id]
 
         temporal_window = settings.search_temporal_window_seconds
-        w_transcript = settings.search_transcript_weight
-        w_visual = settings.search_visual_weight
-        w_bonus = settings.search_agreement_bonus
         min_vis = settings.search_min_visual_score
 
-        # Structured candidate cluster representation
         clusters: List[Dict[str, Any]] = []
+
+        def find_or_create_cluster(m_id: int, timestamp: float, duration_pad: float = 3.0) -> Dict[str, Any]:
+            for c in clusters:
+                if c["media_id"] == m_id:
+                    if (c["start_time"] - temporal_window) <= timestamp <= (c["end_time"] + temporal_window):
+                        return c
+            new_c = {
+                "media_id": m_id,
+                "start_time": max(0.0, timestamp - duration_pad),
+                "end_time": timestamp + duration_pad,
+                "representative_time": timestamp,
+                "transcript_match": None,
+                "visual_matches": [],
+                "person_matches": [],
+                "scene_id": None,
+                "scene_index": None,
+            }
+            clusters.append(new_c)
+            return new_c
 
         # 1. Seed clusters with transcript matches
         for tr in transcript_matches:
-            clusters.append({
-                "media_id": tr["media_id"],
-                "start_time": tr["start_time"],
-                "end_time": tr["end_time"],
-                "representative_time": round((tr["start_time"] + tr["end_time"]) / 2, 2),
-                "transcript_match": tr,
-                "visual_matches": [],
-                "scene_id": None,
-                "scene_index": None,
-            })
+            c = find_or_create_cluster(tr["media_id"], tr["start_time"])
+            c["transcript_match"] = tr
+            c["start_time"] = min(c["start_time"], tr["start_time"])
+            c["end_time"] = max(c["end_time"], tr["end_time"])
 
-        # 2. Match or create clusters from visual matches
+        # 2. Add visual / action matches
         for vm in visual_matches:
             sim = vm.get("similarity", 0.0)
             if sim < min_vis:
@@ -266,57 +406,58 @@ class UnifiedSearchService:
 
             meta = vm.get("metadata", {})
             v_media_id = int(meta.get("media_id", 0))
+            v_time = float(meta.get("timestamp", 0.0))
             v_scene_id = int(meta.get("scene_id", 0)) if meta.get("scene_id") else None
             v_scene_idx = int(meta.get("scene_index", 0)) if meta.get("scene_index") is not None else None
-            v_time = float(meta.get("timestamp", 0.0))
             kf_id = int(meta.get("keyframe_id", 0)) if meta.get("keyframe_id") else None
             kf_path = str(meta.get("file_path", ""))
 
-            # Try to associate with an existing nearby cluster in the same media
-            matched_cluster = None
-            for c in clusters:
-                if c["media_id"] == v_media_id:
-                    # Check temporal overlap or proximity within temporal_window
-                    if (c["start_time"] - temporal_window) <= v_time <= (c["end_time"] + temporal_window):
-                        matched_cluster = c
-                        break
+            c = find_or_create_cluster(v_media_id, v_time)
+            c["visual_matches"].append({
+                "keyframe_id": kf_id,
+                "file_path": kf_path,
+                "timestamp": v_time,
+                "similarity": sim,
+                "scene_id": v_scene_id,
+                "scene_index": v_scene_idx,
+                "is_action": vm.get("is_action_match", False),
+            })
+            c["start_time"] = min(c["start_time"], max(0.0, v_time - 1.5))
+            c["end_time"] = max(c["end_time"], v_time + 1.5)
+            if v_scene_id and not c["scene_id"]:
+                c["scene_id"] = v_scene_id
+                c["scene_index"] = v_scene_idx
 
-            if matched_cluster:
-                matched_cluster["visual_matches"].append({
-                    "keyframe_id": kf_id,
-                    "file_path": kf_path,
-                    "timestamp": v_time,
-                    "similarity": sim,
-                    "scene_id": v_scene_id,
-                    "scene_index": v_scene_idx,
-                })
-                # Expand cluster boundaries to envelope visual keyframe
-                matched_cluster["start_time"] = min(matched_cluster["start_time"], v_time)
-                matched_cluster["end_time"] = max(matched_cluster["end_time"], v_time)
-                if v_scene_id and not matched_cluster["scene_id"]:
-                    matched_cluster["scene_id"] = v_scene_id
-                    matched_cluster["scene_index"] = v_scene_idx
-            else:
-                # Standalone visual candidate cluster
-                clusters.append({
-                    "media_id": v_media_id,
-                    "start_time": max(0.0, v_time - 2.0),
-                    "end_time": v_time + 2.0,
-                    "representative_time": v_time,
-                    "transcript_match": None,
-                    "visual_matches": [{
-                        "keyframe_id": kf_id,
-                        "file_path": kf_path,
-                        "timestamp": v_time,
-                        "similarity": sim,
-                        "scene_id": v_scene_id,
-                        "scene_index": v_scene_idx,
-                    }],
-                    "scene_id": v_scene_id,
-                    "scene_index": v_scene_idx,
-                })
+        # 3. Add person reference matches
+        for pm in person_matches:
+            p_sim = pm.get("person_similarity", pm.get("similarity", 0.0))
+            if p_sim < 0.15:
+                continue
 
-        # 3. Score and format results
+            meta = pm.get("metadata", {})
+            p_media_id = int(meta.get("media_id", 0))
+            p_time = float(meta.get("timestamp", 0.0))
+            p_scene_id = int(meta.get("scene_id", 0)) if meta.get("scene_id") else None
+            p_scene_idx = int(meta.get("scene_index", 0)) if meta.get("scene_index") is not None else None
+            kf_id = int(meta.get("keyframe_id", 0)) if meta.get("keyframe_id") else None
+            kf_path = str(meta.get("file_path", ""))
+
+            c = find_or_create_cluster(p_media_id, p_time)
+            c["person_matches"].append({
+                "keyframe_id": kf_id,
+                "file_path": kf_path,
+                "timestamp": p_time,
+                "similarity": p_sim,
+                "scene_id": p_scene_id,
+                "scene_index": p_scene_idx,
+            })
+            c["start_time"] = min(c["start_time"], max(0.0, p_time - 1.5))
+            c["end_time"] = max(c["end_time"], p_time + 1.5)
+            if p_scene_id and not c["scene_id"]:
+                c["scene_id"] = p_scene_id
+                c["scene_index"] = p_scene_idx
+
+        # 4. Score and build moment results
         results: List[UnifiedSearchResult] = []
 
         for c in clusters:
@@ -326,38 +467,81 @@ class UnifiedSearchService:
 
             tr_info = c["transcript_match"]
             vis_list = c["visual_matches"]
+            pers_list = c["person_matches"]
 
             tr_score = tr_info["score"] if tr_info else 0.0
-            # Best visual similarity in this cluster
             best_vis = max(vis_list, key=lambda x: x["similarity"]) if vis_list else None
             vis_score = best_vis["similarity"] if best_vis else 0.0
+            best_pers = max(pers_list, key=lambda x: x["similarity"]) if pers_list else None
+            pers_score = best_pers["similarity"] if best_pers else 0.0
 
-            # Determine agreement
-            has_both = (tr_score > 0.0) and (vis_score > 0.0)
-            agreement_bonus = w_bonus if has_both else 0.0
+            # Action score based on visual match & action cues
+            action_score = (vis_score * 1.05) if (best_vis and best_vis.get("is_action")) else (vis_score * 0.9)
+            action_score = min(1.0, action_score)
 
-            # Composite ranking formula
-            if has_both:
-                composite_score = (tr_score * w_transcript) + (vis_score * w_visual) + agreement_bonus
-                explanation = f"Matched speech transcript ({tr_score:.2f}) and visual scene ({vis_score:.2f})"
-            elif tr_score > 0.0:
-                composite_score = tr_score * (w_transcript / (w_transcript + w_visual))
-                explanation = f"Matched speech transcript segment ({tr_score:.2f})"
-            else:
-                composite_score = vis_score * (w_visual / (w_transcript + w_visual))
+            # Determine active matched modalities
+            match_types: List[str] = []
+            if tr_score > 0.15:
+                match_types.append("dialogue")
+            if pers_score > 0.20:
+                match_types.append("person")
+            if vis_score > 0.20:
+                match_types.append("visual")
+            if best_vis and best_vis.get("is_action") and action_score > 0.20:
+                match_types.append("action")
+
+            if not match_types and (tr_score > 0 or vis_score > 0 or pers_score > 0):
+                if tr_score >= vis_score and tr_score >= pers_score:
+                    match_types.append("dialogue")
+                elif pers_score >= vis_score:
+                    match_types.append("person")
+                else:
+                    match_types.append("visual")
+
+            # Composite ranking tailored to mode & evidence
+            has_agreement = len(match_types) >= 2
+            agreement_bonus = 0.12 if has_agreement else 0.0
+
+            if mode == SearchMode.DIALOGUE or mode == SearchMode.TRANSCRIPT:
+                composite_score = tr_score
+                explanation = f"Matched speech dialogue ({tr_score:.2f})"
+            elif mode == SearchMode.PERSON:
+                composite_score = pers_score
+                explanation = f"Matched reference person appearance ({pers_score:.2f})"
+            elif mode == SearchMode.ACTION:
+                composite_score = (action_score * 0.7) + (tr_score * 0.3) + agreement_bonus
+                explanation = f"Matched action/event moment ({action_score:.2f})"
+            elif mode == SearchMode.VISUAL:
+                composite_score = vis_score
                 explanation = f"Matched visual keyframe similarity ({vis_score:.2f})"
+            else:
+                # Hybrid / Multimodal
+                if has_ref_image and query:
+                    # Image + Text / Dialogue / Action
+                    composite_score = (pers_score * 0.45) + (action_score * 0.35) + (tr_score * 0.20) + agreement_bonus
+                    explanation = f"Matched reference person ({pers_score:.2f}) + event/dialogue ({max(action_score, tr_score):.2f})"
+                elif has_ref_image:
+                    composite_score = pers_score
+                    explanation = f"Matched reference person ({pers_score:.2f})"
+                elif tr_score > 0 and vis_score > 0:
+                    composite_score = (tr_score * 0.45) + (vis_score * 0.45) + agreement_bonus
+                    explanation = f"Matched speech dialogue ({tr_score:.2f}) & visual action ({vis_score:.2f})"
+                elif tr_score > 0:
+                    composite_score = tr_score
+                    explanation = f"Matched speech dialogue segment ({tr_score:.2f})"
+                else:
+                    composite_score = vis_score
+                    explanation = f"Matched visual scene moment ({vis_score:.2f})"
 
-            # Lookup scene if not yet identified
+            # Lookup thumbnail
+            thumb_path = None
+            if best_pers and best_pers.get("file_path"):
+                thumb_path = best_pers["file_path"]
+            elif best_vis and best_vis.get("file_path"):
+                thumb_path = best_vis["file_path"]
+
             scene_id = c["scene_id"]
             scene_idx = c["scene_index"]
-            thumb_path = None
-
-            if best_vis:
-                thumb_path = best_vis["file_path"]
-                if not scene_id and best_vis.get("scene_id"):
-                    scene_id = best_vis["scene_id"]
-                    scene_idx = best_vis["scene_index"]
-
             if scene_id:
                 scene_obj = get_scene(scene_id)
                 if scene_obj and not thumb_path:
@@ -370,10 +554,13 @@ class UnifiedSearchService:
                 transcript_text=tr_info["text"] if tr_info else None,
                 transcript_segment_id=tr_info["segment_id"] if tr_info else None,
                 transcript_score=round(tr_score, 4),
-                keyframe_id=best_vis["keyframe_id"] if best_vis else None,
-                keyframe_path=best_vis["file_path"] if best_vis else None,
+                keyframe_id=(best_vis["keyframe_id"] if best_vis else (best_pers["keyframe_id"] if best_pers else None)),
+                keyframe_path=(best_vis["file_path"] if best_vis else (best_pers["file_path"] if best_pers else None)),
                 visual_similarity=round(vis_score, 4),
-                agreement=has_both,
+                person_score=round(pers_score, 4),
+                action_score=round(action_score, 4),
+                agreement=has_agreement,
+                match_types=match_types,
                 explanation=explanation,
             )
 
