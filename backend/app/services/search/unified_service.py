@@ -262,7 +262,7 @@ class UnifiedSearchService:
         # 1. Transcript / Dialogue Retrieval
         t_tr_start = time.perf_counter()
         transcript_matches: List[Dict[str, Any]] = []
-        if clean_query and mode in (SearchMode.HYBRID, SearchMode.DIALOGUE, SearchMode.TRANSCRIPT):
+        if clean_query and mode in (SearchMode.HYBRID, SearchMode.EVERYTHING, SearchMode.DIALOGUE, SearchMode.TRANSCRIPT):
             transcript_matches = self.search_transcripts(
                 query=clean_query,
                 db=db,
@@ -275,7 +275,7 @@ class UnifiedSearchService:
         t_vis_start = time.perf_counter()
         visual_matches: List[Dict[str, Any]] = []
         if clean_query:
-            if mode in (SearchMode.ACTION, SearchMode.HYBRID):
+            if mode in (SearchMode.ACTION, SearchMode.HYBRID, SearchMode.EVERYTHING):
                 visual_matches = self.search_action_events(
                     query=clean_query,
                     db=db,

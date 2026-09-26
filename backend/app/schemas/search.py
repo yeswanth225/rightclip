@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 class SearchMode(str, Enum):
     """Supported search retrieval modes"""
     HYBRID = "hybrid"          # Everything (Multimodal Fusion)
+    EVERYTHING = "everything"  # Alias for hybrid/everything
     ACTION = "action"          # Temporal action/event matching
     DIALOGUE = "dialogue"      # Exact & semantic transcript retrieval
     TRANSCRIPT = "transcript"  # Dialogue alias
