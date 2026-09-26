@@ -8,8 +8,8 @@ export default function Layout() {
         top: 0,
         zIndex: 50,
         padding: '0 2rem',
-        height: '64px',
-        backgroundColor: 'rgba(8, 9, 13, 0.85)',
+        height: '60px',
+        backgroundColor: 'rgba(9, 11, 17, 0.85)',
         backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(16px)',
         borderBottom: '1px solid var(--border-subtle)',
@@ -19,26 +19,31 @@ export default function Layout() {
       }}>
         <NavLink to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
           <div style={{
-            width: '30px',
-            height: '30px',
+            width: '28px',
+            height: '28px',
             borderRadius: 'var(--radius-sm)',
             background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             fontWeight: 800,
-            fontSize: '0.9rem',
+            fontSize: '0.85rem',
             color: '#fff',
-            boxShadow: '0 2px 8px rgba(99, 102, 241, 0.4)',
+            boxShadow: '0 2px 8px rgba(99, 102, 241, 0.35)',
           }}>
             CF
           </div>
-          <span style={{ fontSize: '1.1rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-pure)' }}>
-            ClipFinder
-          </span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+            <span style={{ fontSize: '1.05rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-pure)' }}>
+              ClipFinder
+            </span>
+            <span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-dim)', letterSpacing: '0.04em', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace' }}>
+              PRO
+            </span>
+          </div>
         </NavLink>
 
-        <nav style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+        <nav style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
           <NavLink
             to="/"
             end
@@ -50,6 +55,8 @@ export default function Layout() {
               textDecoration: 'none',
               color: isActive ? 'var(--text-pure)' : 'var(--text-secondary)',
               backgroundColor: isActive ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+              border: isActive ? '1px solid var(--border-medium)' : '1px solid transparent',
+              transition: 'all 0.15s ease',
             })}
           >
             Upload
@@ -65,6 +72,7 @@ export default function Layout() {
               color: isActive ? '#a5b4fc' : 'var(--text-secondary)',
               backgroundColor: isActive ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
               border: isActive ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid transparent',
+              transition: 'all 0.15s ease',
             })}
           >
             🔍 Search Moments
@@ -79,6 +87,8 @@ export default function Layout() {
               textDecoration: 'none',
               color: isActive ? 'var(--text-pure)' : 'var(--text-secondary)',
               backgroundColor: isActive ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+              border: isActive ? '1px solid var(--border-medium)' : '1px solid transparent',
+              transition: 'all 0.15s ease',
             })}
           >
             Library

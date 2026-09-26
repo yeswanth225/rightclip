@@ -1,40 +1,72 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
-  /* Surface & Canvas Tokens */
-  --bg-app: #08090d;
-  --bg-surface-0: #0d0f14;
-  --bg-surface-1: #13161f;
-  --bg-surface-2: #1b1f2b;
-  --bg-surface-elevated: #222736;
-  
-  /* Borders & Dividers */
-  --border-subtle: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --border-focused: #6366f1;
+  /* ==========================================================================
+     Surfaces & Canvas Tokens (Restrained dark-tech media workspace)
+     ========================================================================== */
+  --bg-app: #090a0f;
+  --bg-surface-0: #0e1017;
+  --bg-surface-1: #141722;
+  --bg-surface-2: #1b1f2e;
+  --bg-surface-elevated: #23283b;
+  --bg-surface-glass: rgba(14, 16, 23, 0.82);
 
-  /* Brand & Accents */
+  /* ==========================================================================
+     Borders & Dividers (Consistent hairline hierarchy)
+     ========================================================================== */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-active: #6366f1;
+  --border-focus-ring: rgba(99, 102, 241, 0.35);
+
+  /* ==========================================================================
+     Brand & Modality Semantic Accents (One primary accent + distinct modal cues)
+     ========================================================================== */
   --accent-primary: #6366f1;
   --accent-primary-hover: #4f46e5;
   --accent-primary-subtle: rgba(99, 102, 241, 0.12);
-  --accent-cyan: #06b6d4;
-  --accent-emerald: #10b981;
-  --accent-amber: #f59e0b;
-  --accent-rose: #f43f5e;
+  --accent-primary-glow: rgba(99, 102, 241, 0.25);
 
-  /* Typography */
+  /* Modality badges */
+  --accent-cyan: #06b6d4;
+  --accent-cyan-subtle: rgba(6, 182, 212, 0.12);
+  --accent-emerald: #10b981;
+  --accent-emerald-subtle: rgba(16, 185, 129, 0.12);
+  --accent-amber: #f59e0b;
+  --accent-amber-subtle: rgba(245, 158, 11, 0.12);
+  --accent-purple: #a855f7;
+  --accent-purple-subtle: rgba(168, 85, 247, 0.12);
+  --accent-rose: #f43f5e;
+  --accent-rose-subtle: rgba(244, 63, 94, 0.12);
+
+  /* ==========================================================================
+     Typography & Contrast (WCAG AA Compliant)
+     ========================================================================== */
   --text-pure: #ffffff;
-  --text-primary: #f1f5f9;
+  --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
   --text-dim: #475569;
 
-  /* Radius & Spacing */
+  /* ==========================================================================
+     Radius Tokens (Consistent 8px default system with soft pill tags)
+     ========================================================================== */
+  --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
+  --radius-xl: 18px;
   --radius-pill: 9999px;
 
+  /* ==========================================================================
+     Shadow Tokens (Deep tinted media elevation)
+     ========================================================================== */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.65);
+  --shadow-glow: 0 0 24px rgba(99, 102, 241, 0.2);
+
+  /* Fonts */
   font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
   color-scheme: dark;
@@ -53,19 +85,19 @@
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100dvh;
   background-color: var(--bg-app);
   color: var(--text-primary);
   overflow-x: hidden;
 }
 
 #root {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
 
-/* Monospace fonts */
+/* Monospace font standard */
 .font-mono {
   font-family: 'JetBrains Mono', monospace;
 }
@@ -81,7 +113,7 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-pill);
 }
 
@@ -100,10 +132,22 @@ button {
   border: none;
   outline: none;
   transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 button:active {
   transform: scale(0.98);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 input, textarea, select {
@@ -111,7 +155,88 @@ input, textarea, select {
   outline: none;
 }
 
-/* Video element default style */
 video {
   outline: none;
+  display: block;
+}
+
+/* ==========================================================================
+   Common Workspace Utility Classes
+   ========================================================================== */
+.container-xl {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.card-surface {
+  background-color: var(--bg-surface-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.15s ease;
+}
+
+.card-surface:hover {
+  border-color: var(--border-strong);
+  background-color: var(--bg-surface-1);
+}
+
+.badge-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.badge-dialogue {
+  background-color: var(--accent-cyan-subtle);
+  color: #22d3ee;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.badge-action {
+  background-color: var(--accent-amber-subtle);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-person {
+  background-color: var(--accent-purple-subtle);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.badge-visual {
+  background-color: var(--accent-primary-subtle);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.badge-ready {
+  background-color: var(--accent-emerald-subtle);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-processing {
+  background-color: var(--accent-amber-subtle);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-failed {
+  background-color: var(--accent-rose-subtle);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
+@media (max-width: 768px) {
+  .container-xl {
+    padding: 1.5rem 1rem 3rem;
+  }
 }

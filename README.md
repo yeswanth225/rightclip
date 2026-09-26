@@ -52,6 +52,7 @@ cd clip
 
 # Backend setup
 cd backend
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
