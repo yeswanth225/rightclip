@@ -278,7 +278,7 @@ async def _process_media(media_id: int, source):
 
         # Update status
         media_asset.status = MediaStatus.VALIDATING
-        media_asset.file_path = str(original_path)
+        media_asset.file_path = original_path.as_posix()
         if not media_asset.file_size:
             media_asset.file_size = original_path.stat().st_size
         db_session.commit()
@@ -316,7 +316,7 @@ async def _process_media(media_id: int, source):
         proxy_path = proxy_dir / proxy_filename
 
         FFmpegProcessor.generate_proxy(original_path, proxy_path, target_height=720)
-        media_asset.proxy_path = str(proxy_path)
+        media_asset.proxy_path = proxy_path.as_posix()
         db_session.commit()
 
         # Extract thumbnail
@@ -327,8 +327,9 @@ async def _process_media(media_id: int, source):
         # Extract thumbnail at 10 seconds or 10% of duration, whichever is smaller
         thumbnail_time = min(10.0, media_asset.duration * 0.1)
         FFmpegProcessor.extract_thumbnail(original_path, thumbnail_path, thumbnail_time)
-        media_asset.thumbnail_path = str(thumbnail_path)
+        media_asset.thumbnail_path = thumbnail_path.as_posix()
         db_session.commit()
+
 
         # Run speech-to-text transcription
         try:
@@ -370,8 +371,13 @@ async def _process_media(media_id: int, source):
             import logging
             logging.getLogger(__name__).warning(f"Visual indexing failed for media {media_id}: {visual_err}")
 
+        # Physical verification of proxy before marking ready
+        if not proxy_path.exists() or proxy_path.stat().st_size == 0:
+            raise RuntimeError(f"Proxy file missing or invalid prior to ready state: {proxy_path}")
+
         # Mark as ready
         media_asset.status = MediaStatus.READY
+        media_asset.error_message = None
         db_session.commit()
 
 

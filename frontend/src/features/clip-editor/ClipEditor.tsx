@@ -28,7 +28,15 @@ export default function ClipEditor() {
     queryKey: ['media', id],
     queryFn: () => mediaService.getMedia(Number(id)),
     enabled: !!id,
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (data?.status && ['uploaded', 'downloading', 'validating', 'processing'].includes(data.status)) {
+        return 2000
+      }
+      return false
+    },
   })
+
 
   // Fetch existing saved clips for this media
   const { data: savedClipsData } = useQuery({
@@ -365,16 +373,31 @@ export default function ClipEditor() {
           <video
             ref={videoRef}
             src={proxyUrl}
+            preload="metadata"
+            playsInline
             onTimeUpdate={handleTimeUpdate}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
             style={{ width: '100%', maxHeight: '460px', display: 'block' }}
           />
+        ) : media.status === 'processing' || media.status === 'validating' ? (
+          <div style={{ padding: '5rem 2rem', textAlign: 'center', color: '#818cf8' }}>
+            <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>⏳</div>
+            <div style={{ fontWeight: 600 }}>Video Proxy Generation in Progress</div>
+            <div style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.6)', marginTop: '0.25rem' }}>
+              Preparing high-performance browser stream...
+            </div>
+          </div>
         ) : (
-          <div style={{ padding: '5rem', textAlign: 'center', color: 'rgba(255, 255, 255, 0.4)' }}>
-            Video proxy stream unavailable.
+          <div style={{ padding: '5rem 2rem', textAlign: 'center', color: 'rgba(255, 255, 255, 0.5)' }}>
+            <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>⚠️</div>
+            <div style={{ fontWeight: 600 }}>Video stream unavailable</div>
+            <div style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.4)', marginTop: '0.25rem' }}>
+              Status: {media.status}
+            </div>
           </div>
         )}
+
 
         {/* Overlay Current Playback info */}
         <div style={{

@@ -93,25 +93,39 @@ class FasterWhisperProvider(TranscriptionProvider):
         return device, compute_type
 
     def _get_model(self):
-        """Lazy loader for faster-whisper WhisperModel"""
+        """Lazy loader for faster-whisper WhisperModel with automatic CPU fallback"""
         if self._model is None:
             from faster_whisper import WhisperModel
 
-            logger.info(
-                f"Loading WhisperModel(size='{self.model_size}', device='{self.device}', "
-                f"compute_type='{self.compute_type}', cpu_threads={self.threads})..."
-            )
-            self._model = WhisperModel(
-                self.model_size,
-                device=self.device,
-                compute_type=self.compute_type,
-                cpu_threads=self.threads,
-            )
+            try:
+                logger.info(
+                    f"Loading WhisperModel(size='{self.model_size}', device='{self.device}', "
+                    f"compute_type='{self.compute_type}', cpu_threads={self.threads})..."
+                )
+                self._model = WhisperModel(
+                    self.model_size,
+                    device=self.device,
+                    compute_type=self.compute_type,
+                    cpu_threads=self.threads,
+                )
+            except Exception as e:
+                if self.device != "cpu":
+                    logger.warning(f"Failed to load WhisperModel on {self.device} ({e}). Falling back to CPU.")
+                    self.device = "cpu"
+                    self.compute_type = "int8"
+                    self._model = WhisperModel(
+                        self.model_size,
+                        device="cpu",
+                        compute_type="int8",
+                        cpu_threads=self.threads,
+                    )
+                else:
+                    raise e
         return self._model
 
     def transcribe(self, audio_or_video_path: Path, language: Optional[str] = None) -> TranscriptionResult:
         """
-        Transcribe audio or video using faster-whisper
+        Transcribe audio or video using faster-whisper with automatic fallback to CPU if CUDA fails.
 
         Args:
             audio_or_video_path: Path to the media file
@@ -127,18 +141,43 @@ class FasterWhisperProvider(TranscriptionProvider):
         model = self._get_model()
 
         # Transcribe with word timestamps & VAD filtering
-        segments_gen, info = model.transcribe(
-            str(path),
-            language=language,
-            beam_size=5,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500),
-        )
+        try:
+            segments_gen, info = model.transcribe(
+                str(path),
+                language=language,
+                beam_size=5,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500),
+            )
+            # Evaluate generator to catch any CUDA library runtime errors during inference
+            segments_list = list(segments_gen)
+        except Exception as e:
+            if "cublas" in str(e).lower() or "cuda" in str(e).lower() or "cudnn" in str(e).lower():
+                logger.warning(f"CUDA transcription execution failed ({e}), falling back to CPU...")
+                from faster_whisper import WhisperModel
+                self.device = "cpu"
+                self.compute_type = "int8"
+                self._model = WhisperModel(
+                    self.model_size,
+                    device="cpu",
+                    compute_type="int8",
+                    cpu_threads=self.threads,
+                )
+                segments_gen, info = self._model.transcribe(
+                    str(path),
+                    language=language,
+                    beam_size=5,
+                    vad_filter=True,
+                    vad_parameters=dict(min_silence_duration_ms=500),
+                )
+                segments_list = list(segments_gen)
+            else:
+                raise e
 
         segments = []
         full_text_parts = []
 
-        for idx, segment in enumerate(segments_gen):
+        for idx, segment in enumerate(segments_list):
             cleaned_text = segment.text.strip()
             if cleaned_text:
                 full_text_parts.append(cleaned_text)

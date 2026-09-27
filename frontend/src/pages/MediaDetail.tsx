@@ -183,7 +183,7 @@ export default function MediaDetail() {
       </div>
 
       {/* Main Video Viewport */}
-      {proxyUrl && (
+      {proxyUrl ? (
         <div style={{
           backgroundColor: '#000',
           borderRadius: 'var(--radius-lg)',
@@ -196,10 +196,28 @@ export default function MediaDetail() {
             ref={videoRef}
             src={proxyUrl}
             controls
+            preload="metadata"
+            playsInline
             style={{ width: '100%', maxHeight: '460px', display: 'block' }}
           />
         </div>
+      ) : (
+        <div style={{
+          backgroundColor: 'rgba(0, 0, 0, 0.4)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '4rem 2rem',
+          textAlign: 'center',
+          marginBottom: '1.5rem',
+          border: '1px dashed var(--border-subtle)',
+        }}>
+          <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>⏳</div>
+          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Video Stream Processing</div>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+            Status: {media.status} — Generating progressive web playback proxy...
+          </div>
+        </div>
       )}
+
 
       {/* Analysis Hierarchy Navigation Tabs */}
       <div style={{

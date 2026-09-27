@@ -4,6 +4,8 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.coverage
+htmlcov/
 build/
 develop-eggs/
 dist/
@@ -56,8 +58,10 @@ dist-ssr/
 .DS_Store
 
 # Media storage
-media/
-uploads/
+/media/
+/backend/media/
+/uploads/
+/backend/uploads/
 exports/
 proxies/
 data/

@@ -5,7 +5,11 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-import cv2
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
 import numpy as np
 from PIL import Image
 
@@ -51,6 +55,8 @@ class LocalPersonEmbeddingProvider(PersonEmbeddingProvider):
         self._upperbody_cascade = None
 
     def _ensure_cascades_loaded(self):
+        if cv2 is None:
+            return
         if self._face_cascade is None:
             try:
                 face_cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -71,6 +77,14 @@ class LocalPersonEmbeddingProvider(PersonEmbeddingProvider):
         """Detect human faces or upper bodies and crop them for person indexing"""
         if not image_path.exists():
             return []
+
+        if cv2 is None:
+            try:
+                pil_full = Image.open(image_path).convert("RGB")
+                return [(pil_full, {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0})]
+            except Exception as err:
+                logger.warning(f"Failed to load image with PIL: {err}")
+                return []
 
         self._ensure_cascades_loaded()
 
