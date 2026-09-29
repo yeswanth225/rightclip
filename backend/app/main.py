@@ -2,7 +2,9 @@
 
 from contextlib import asynccontextmanager
 
+import os
 from pathlib import Path
+import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +14,11 @@ from app import __version__
 from app.api import clips, health, media, scenes, search, transcript, visual
 from app.core.config import get_settings
 from app.core.database import Base, engine
+
+# Ensure venv Scripts directory and executable directory are on PATH for ffmpeg/ffprobe
+scripts_dir = str(Path(sys.executable).parent)
+if scripts_dir not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = scripts_dir + os.pathsep + os.environ.get("PATH", "")
 
 settings = get_settings()
 

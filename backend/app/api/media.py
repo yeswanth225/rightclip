@@ -344,6 +344,7 @@ async def _process_media(media_id: int, source):
             # Log transcription error without failing the whole media asset
             import logging
             logging.getLogger(__name__).warning(f"Transcription failed for media {media_id}: {transcript_err}")
+            db_session.rollback()  # Ensure session is clean after any sub-service failure
 
         # Run scene boundary detection
         try:
@@ -357,6 +358,7 @@ async def _process_media(media_id: int, source):
         except Exception as scene_err:
             import logging
             logging.getLogger(__name__).warning(f"Scene detection failed for media {media_id}: {scene_err}")
+            db_session.rollback()  # Ensure session is clean after any sub-service failure
 
         # Run visual-semantic keyframing & vector indexing
         try:
@@ -370,6 +372,7 @@ async def _process_media(media_id: int, source):
         except Exception as visual_err:
             import logging
             logging.getLogger(__name__).warning(f"Visual indexing failed for media {media_id}: {visual_err}")
+            db_session.rollback()  # Ensure session is clean after any sub-service failure
 
         # Physical verification of proxy before marking ready
         if not proxy_path.exists() or proxy_path.stat().st_size == 0:
@@ -383,7 +386,11 @@ async def _process_media(media_id: int, source):
 
 
     except Exception as e:
-        # Mark as failed
+        # Mark as failed — rollback first to ensure session is in a clean state
+        try:
+            db_session.rollback()
+        except Exception:
+            pass
         media_asset = db_session.query(MediaAsset).filter(MediaAsset.id == media_id).first()
         if media_asset:
             media_asset.status = MediaStatus.FAILED
