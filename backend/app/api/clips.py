@@ -1,7 +1,7 @@
 """Clip management endpoints for Phase 7 clip editing and saved selections"""
 
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -12,6 +12,7 @@ from app.schemas.clip import (
     ClipUpdate,
     ClipResponse,
     ClipListResponse,
+    ClipExportRequest,
 )
 
 router = APIRouter()
@@ -196,21 +197,34 @@ def export_saved_clip(
 @router.post("/media/{media_id}/export-clip")
 def export_moment_clip(
     media_id: int,
-    start_time: float,
-    end_time: float,
-    title: str = "Exported Moment",
+    body: Optional[ClipExportRequest] = Body(default=None),
+    start_time: Optional[float] = None,
+    end_time: Optional[float] = None,
+    title: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """
     Export physical trimmed MP4 video on the fly for arbitrary start/end timestamps.
+    Accepts parameters either via JSON request body or query parameters.
     """
     from pathlib import Path
     import uuid
     from app.core.config import get_settings
     from app.services.media.processor import FFmpegProcessor
 
-    if start_time >= end_time:
+    req_start = body.start_time if body and body.start_time is not None else start_time
+    req_end = body.end_time if body and body.end_time is not None else end_time
+    req_title = body.title if body and body.title is not None else (title or "Exported Moment")
+
+    if req_start is None or req_end is None:
+        raise HTTPException(status_code=400, detail="start_time and end_time are required (via JSON body or query params)")
+
+    if req_start >= req_end:
         raise HTTPException(status_code=400, detail="start_time must be strictly less than end_time")
+
+    start_time = req_start
+    end_time = req_end
+    title = req_title
 
     settings = get_settings()
     media = db.query(MediaAsset).filter(MediaAsset.id == media_id).first()

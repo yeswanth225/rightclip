@@ -60,3 +60,11 @@ class ClipListResponse(BaseModel):
     media_id: int
     total_clips: int
     clips: List[ClipResponse]
+
+
+class ClipExportRequest(BaseModel):
+    """Schema for requesting a physical MP4 export of an arbitrary moment"""
+
+    start_time: float = Field(..., ge=0.0, description="Start timestamp in seconds")
+    end_time: float = Field(..., gt=0.0, description="End timestamp in seconds")
+    title: Optional[str] = Field(default="Exported Moment", max_length=255)

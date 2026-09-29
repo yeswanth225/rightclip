@@ -42,7 +42,8 @@ class VisualIndexingService:
         Rules:
         - duration < 3.0s: 1 keyframe at midpoint (50%)
         - 3.0s <= duration <= 10.0s: 2 keyframes (25%, 75%)
-        - duration > 10.0s: 3 keyframes (15%, 50%, 85%)
+        - 10.0s < duration <= 30.0s: 3 keyframes (15%, 50%, 85%)
+        - duration > 30.0s: sample every 10-12s across scene (capped at 30 keyframes per scene)
         """
         if duration <= 0:
             return [start_time]
@@ -54,12 +55,23 @@ class VisualIndexingService:
                 round(start_time + (duration * 0.25), 3),
                 round(start_time + (duration * 0.75), 3),
             ]
-        else:
+        elif duration <= 30.0:
             return [
                 round(start_time + (duration * 0.15), 3),
                 round(start_time + (duration * 0.50), 3),
                 round(start_time + (duration * 0.85), 3),
             ]
+        else:
+            # Long scene in long video: sample keyframes at regular intervals
+            step = 10.0
+            timestamps: List[float] = []
+            cur = start_time + 3.0
+            while cur < (end_time - 1.5) and len(timestamps) < 30:
+                timestamps.append(round(cur, 3))
+                cur += step
+            if not timestamps:
+                timestamps = [round(start_time + (duration * 0.5), 3)]
+            return timestamps
 
     def index_media_visuals(
         self,

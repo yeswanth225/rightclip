@@ -240,10 +240,18 @@ async def ingest_media_url(
     )
 
 
-async def _process_media_task(media_id: int, source):
-    """Background task entry point for media processing"""
-    await _process_media(media_id, source)
-
+def _process_media_task(media_id: int, source):
+    """
+    Background task entry point for media processing.
+    Runs synchronously in Starlette's threadpool so the FastAPI asyncio event loop
+    remains non-blocking and responsive during long video processing.
+    """
+    import asyncio
+    import logging
+    try:
+        asyncio.run(_process_media(media_id, source))
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Fatal error in background media task for {media_id}: {e}", exc_info=True)
 
 
 async def _process_media(media_id: int, source):

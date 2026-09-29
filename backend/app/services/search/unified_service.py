@@ -384,11 +384,32 @@ class UnifiedSearchService:
 
         clusters: List[Dict[str, Any]] = []
 
-        def find_or_create_cluster(m_id: int, timestamp: float, duration_pad: float = 3.0) -> Dict[str, Any]:
+        def find_or_create_cluster(
+            m_id: int,
+            timestamp: float,
+            scene_id: Optional[int] = None,
+            scene_idx: Optional[int] = None,
+            duration_pad: float = 2.0,
+            max_cluster_duration: float = 10.0,
+        ) -> Dict[str, Any]:
             for c in clusters:
                 if c["media_id"] == m_id:
-                    if (c["start_time"] - temporal_window) <= timestamp <= (c["end_time"] + temporal_window):
+                    # Do not merge across different scene cuts
+                    if scene_id is not None and c["scene_id"] is not None and scene_id != c["scene_id"]:
+                        continue
+
+                    cand_start = min(c["start_time"], max(0.0, timestamp - duration_pad))
+                    cand_end = max(c["end_time"], timestamp + duration_pad)
+                    
+                    # Merge only if temporally close (<= 3.5s gap) and within maximum moment duration
+                    if (c["start_time"] - 3.5) <= timestamp <= (c["end_time"] + 3.5) and (cand_end - cand_start) <= max_cluster_duration:
+                        c["start_time"] = cand_start
+                        c["end_time"] = cand_end
+                        if scene_id and not c["scene_id"]:
+                            c["scene_id"] = scene_id
+                            c["scene_index"] = scene_idx
                         return c
+
             new_c = {
                 "media_id": m_id,
                 "start_time": max(0.0, timestamp - duration_pad),
@@ -397,20 +418,26 @@ class UnifiedSearchService:
                 "transcript_match": None,
                 "visual_matches": [],
                 "person_matches": [],
-                "scene_id": None,
-                "scene_index": None,
+                "scene_id": scene_id,
+                "scene_index": scene_idx,
             }
             clusters.append(new_c)
             return new_c
 
-        # 1. Seed clusters with transcript matches
+        # 1. Seed clusters with transcript matches (exact spoken utterance window)
         for tr in transcript_matches:
-            c = find_or_create_cluster(tr["media_id"], tr["start_time"])
+            c = find_or_create_cluster(
+                tr["media_id"],
+                tr["start_time"],
+                duration_pad=0.5,
+                max_cluster_duration=max(12.0, (tr["end_time"] - tr["start_time"]) + 2.0),
+            )
             c["transcript_match"] = tr
-            c["start_time"] = min(c["start_time"], tr["start_time"])
-            c["end_time"] = max(c["end_time"], tr["end_time"])
+            c["start_time"] = tr["start_time"]
+            c["end_time"] = tr["end_time"]
+            c["representative_time"] = round(tr["start_time"] + ((tr["end_time"] - tr["start_time"]) * 0.5), 3)
 
-        # 2. Add visual / action matches
+        # 2. Add visual / action matches (tight keyframe moment window)
         for vm in visual_matches:
             sim = vm.get("similarity", 0.0)
             if sim < min_vis:
@@ -424,7 +451,14 @@ class UnifiedSearchService:
             kf_id = int(meta.get("keyframe_id", 0)) if meta.get("keyframe_id") else None
             kf_path = str(meta.get("file_path", ""))
 
-            c = find_or_create_cluster(v_media_id, v_time)
+            c = find_or_create_cluster(
+                v_media_id,
+                v_time,
+                scene_id=v_scene_id,
+                scene_idx=v_scene_idx,
+                duration_pad=2.0,
+                max_cluster_duration=8.0,
+            )
             c["visual_matches"].append({
                 "keyframe_id": kf_id,
                 "file_path": kf_path,
@@ -434,13 +468,14 @@ class UnifiedSearchService:
                 "scene_index": v_scene_idx,
                 "is_action": vm.get("is_action_match", False),
             })
-            c["start_time"] = min(c["start_time"], max(0.0, v_time - 1.5))
-            c["end_time"] = max(c["end_time"], v_time + 1.5)
+            if not c["transcript_match"]:
+                c["start_time"] = min(c["start_time"], max(0.0, v_time - 2.0))
+                c["end_time"] = max(c["end_time"], v_time + 2.0)
             if v_scene_id and not c["scene_id"]:
                 c["scene_id"] = v_scene_id
                 c["scene_index"] = v_scene_idx
 
-        # 3. Add person reference matches
+        # 3. Add person reference matches (tight reference moment window)
         for pm in person_matches:
             p_sim = pm.get("person_similarity", pm.get("similarity", 0.0))
             if p_sim < 0.15:
@@ -454,7 +489,14 @@ class UnifiedSearchService:
             kf_id = int(meta.get("keyframe_id", 0)) if meta.get("keyframe_id") else None
             kf_path = str(meta.get("file_path", ""))
 
-            c = find_or_create_cluster(p_media_id, p_time)
+            c = find_or_create_cluster(
+                p_media_id,
+                p_time,
+                scene_id=p_scene_id,
+                scene_idx=p_scene_idx,
+                duration_pad=2.0,
+                max_cluster_duration=8.0,
+            )
             c["person_matches"].append({
                 "keyframe_id": kf_id,
                 "file_path": kf_path,
@@ -463,8 +505,9 @@ class UnifiedSearchService:
                 "scene_id": p_scene_id,
                 "scene_index": p_scene_idx,
             })
-            c["start_time"] = min(c["start_time"], max(0.0, p_time - 1.5))
-            c["end_time"] = max(c["end_time"], p_time + 1.5)
+            if not c["transcript_match"]:
+                c["start_time"] = min(c["start_time"], max(0.0, p_time - 2.0))
+                c["end_time"] = max(c["end_time"], p_time + 2.0)
             if p_scene_id and not c["scene_id"]:
                 c["scene_id"] = p_scene_id
                 c["scene_index"] = p_scene_idx
