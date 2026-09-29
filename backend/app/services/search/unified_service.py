@@ -163,18 +163,28 @@ class UnifiedSearchService:
             return []
 
         # Generate action-expanded queries to capture progressive motion states
-        # e.g., 'opens car door' -> ['opens car door', 'person getting in car', 'car door opened']
+        # e.g., 'character walks into room' -> ['character walks into room', 'person walking into room doorway', 'entering room']
         action_prompts = [clean_query]
-        if "running" in clean_query.lower() or "runs" in clean_query.lower():
-            action_prompts.append("person running in street action scene")
-        elif "punch" in clean_query.lower() or "fight" in clean_query.lower():
-            action_prompts.append("action scene fighting punch physical altercation")
-        elif "door" in clean_query.lower() and "car" in clean_query.lower():
-            action_prompts.append("person entering vehicle car door opening")
-        elif "shake" in clean_query.lower() and "hand" in clean_query.lower():
+        q_lower = clean_query.lower()
+        
+        if "walk" in q_lower or "enters" in q_lower or "entering" in q_lower:
+            action_prompts.append("person walking entering room doorway")
+        if "running" in q_lower or "runs" in q_lower or "sprint" in q_lower:
+            action_prompts.append("person running action motion scene")
+        if "punch" in q_lower or "fight" in q_lower or "hit" in q_lower:
+            action_prompts.append("action fighting punch physical altercation martial arts")
+        if "phone" in q_lower or "call" in q_lower:
+            action_prompts.append("person holding phone making call screen")
+        if "door" in q_lower or "car" in q_lower or "vehicle" in q_lower:
+            action_prompts.append("person near vehicle car door opening driving")
+        if "shake" in q_lower and "hand" in q_lower:
             action_prompts.append("two people shaking hands greeting agreement")
-        elif "sits" in clean_query.lower() or "sitting" in clean_query.lower():
+        if "sits" in q_lower or "sitting" in q_lower or "chair" in q_lower:
             action_prompts.append("person sitting down on chair couch")
+        if "stands" in q_lower or "standing" in q_lower or "building" in q_lower:
+            action_prompts.append("person standing outside building structure")
+        if "look" in q_lower or "stare" in q_lower or "turn" in q_lower:
+            action_prompts.append("character looking turning around close up")
 
         # Collect visual matches across action prompt variants
         seen_kf_ids: Set[str] = set()
@@ -564,14 +574,34 @@ class UnifiedSearchService:
                 explanation=explanation,
             )
 
+            # Calculate and clamp moment boundaries against media duration
+            st = max(0.0, c["start_time"])
+            et = c["end_time"]
+            if media.duration and media.duration > 0:
+                et = min(media.duration, et)
+                st = min(st, max(0.0, media.duration - 0.1))
+            if st >= et:
+                et = st + 1.0 if not media.duration else min(media.duration, st + 1.0)
+
+            rep_t = c["representative_time"]
+            if best_vis and best_vis.get("timestamp") is not None:
+                rep_t = best_vis["timestamp"]
+            elif best_pers and best_pers.get("timestamp") is not None:
+                rep_t = best_pers["timestamp"]
+            elif tr_info and tr_info.get("start_time") is not None:
+                rep_t = tr_info["start_time"]
+
+            if media.duration and media.duration > 0:
+                rep_t = min(media.duration, max(0.0, rep_t))
+
             result_item = UnifiedSearchResult(
                 media_id=media.id,
                 media_filename=media.filename,
                 scene_id=scene_id,
                 scene_index=scene_idx,
-                start_time=round(c["start_time"], 2),
-                end_time=round(c["end_time"], 2),
-                representative_timestamp=round(c["representative_time"], 2),
+                start_time=round(st, 2),
+                end_time=round(et, 2),
+                representative_timestamp=round(rep_t, 2),
                 thumbnail_path=thumb_path,
                 score=round(composite_score, 4),
                 evidence=evidence,

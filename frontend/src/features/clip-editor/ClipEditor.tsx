@@ -1,10 +1,20 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  Scissors,
+  Play,
+  Pause,
+  ArrowCounterClockwise,
+  DownloadSimple,
+  Trash,
+  CheckCircle,
+  WarningCircle,
+  ArrowLeft,
+} from '@phosphor-icons/react'
 import { mediaService } from '../../services/mediaService'
 import { getAssetUrl } from '../../utils/assets'
 import type { UnifiedSearchResult, Clip } from '../../types/media'
-
 
 export default function ClipEditor() {
   const { id } = useParams()
@@ -24,10 +34,11 @@ export default function ClipEditor() {
   const timelineRef = useRef<HTMLDivElement | null>(null)
 
   // Fetch Media Asset
-  const { data: media, isLoading: mediaLoading, error: mediaError } = useQuery({
+  const { data: media } = useQuery({
     queryKey: ['media', id],
     queryFn: () => mediaService.getMedia(Number(id)),
     enabled: !!id,
+
     refetchInterval: (query) => {
       const data = query.state.data
       if (data?.status && ['uploaded', 'downloading', 'validating', 'processing'].includes(data.status)) {
@@ -36,7 +47,6 @@ export default function ClipEditor() {
       return false
     },
   })
-
 
   // Fetch existing saved clips for this media
   const { data: savedClipsData } = useQuery({
@@ -62,10 +72,9 @@ export default function ClipEditor() {
   const [clipTitle, setClipTitle] = useState<string>(
     navState.searchResult?.media_filename
       ? `Clip: ${navState.searchResult.media_filename.replace(/\.[^/.]+$/, '')} (${formatTime(aiStart)}-${formatTime(aiEnd)})`
-      : 'My Highlight Clip'
+      : 'Highlight Clip'
   )
-  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string>('')
-  const [isDragging, setIsDragging] = useState<'start' | 'end' | 'playhead' | null>(null)
+  const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
 
   // Sync initial boundaries once media is loaded if not explicitly set
   useEffect(() => {
@@ -76,7 +85,6 @@ export default function ClipEditor() {
     }
   }, [media?.duration])
 
-  // Time format helper
   function formatTime(seconds: number): string {
     if (isNaN(seconds) || seconds < 0) return '00:00.000'
     const mins = Math.floor(seconds / 60)
@@ -99,8 +107,44 @@ export default function ClipEditor() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['media-clips', id] })
-      setSaveSuccessMsg('✓ Clip selection saved successfully!')
-      setTimeout(() => setSaveSuccessMsg(''), 4000)
+      setStatusMsg({ text: '✓ Clip saved to project library!', type: 'success' })
+      setTimeout(() => setStatusMsg(null), 4000)
+    },
+    onError: (err: any) => {
+      setStatusMsg({ text: `Save failed: ${err?.response?.data?.detail || err.message}`, type: 'error' })
+      setTimeout(() => setStatusMsg(null), 5000)
+    },
+  })
+
+  // Mutation to export physical MP4
+  const exportMutation = useMutation({
+    mutationFn: () =>
+      mediaService.exportMoment(
+        Number(id),
+        Math.round(startTime * 1000) / 1000,
+        Math.round(endTime * 1000) / 1000,
+        clipTitle.trim() || 'Trimmed Clip'
+      ),
+    onSuccess: (data) => {
+      setStatusMsg({ text: `✓ MP4 clip exported! Downloading...`, type: 'success' })
+      const a = document.createElement('a')
+      a.href = data.download_url
+      a.download = `clip_${data.media_id}_${data.start_time}s_${data.end_time}s.mp4`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => setStatusMsg(null), 5000)
+    },
+    onError: (err: any) => {
+      setStatusMsg({ text: `Export failed: ${err?.response?.data?.detail || err.message}`, type: 'error' })
+      setTimeout(() => setStatusMsg(null), 5000)
+    },
+  })
+
+  const deleteClipMutation = useMutation({
+    mutationFn: (clipId: number) => mediaService.deleteClip(clipId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['media-clips', id] })
     },
   })
 
@@ -174,10 +218,9 @@ export default function ClipEditor() {
     }
   }
 
-  // Keyboard Shortcuts (I=In/Start, O=Out/End, Space=Play, Left/Right=Frame step)
+  // Keyboard Shortcuts (I=In, O=Out, Space=Play/Pause, Left/Right=Frame step)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Avoid intercepting input tags
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
         return
       }
@@ -202,682 +245,490 @@ export default function ClipEditor() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [togglePlay, startTime, endTime, duration])
+  }, [togglePlay, startTime, endTime, duration, frameDuration])
 
-  // Dragging timeline handles
-  const handleTimelineMouseDown = (e: React.MouseEvent<HTMLDivElement>, handle: 'start' | 'end' | 'playhead') => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(handle)
-  }
+  const proxyUrl = getAssetUrl(media?.proxy_path || media?.file_path)
+  const clipDuration = Math.max(0, endTime - startTime)
 
-  const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!timelineRef.current || isDragging) return
-    const rect = timelineRef.current.getBoundingClientRect()
-    const clickX = e.clientX - rect.left
-    const percent = Math.max(0, Math.min(1, clickX / rect.width))
-    const targetTime = percent * duration
-
-    if (videoRef.current) {
-      videoRef.current.currentTime = targetTime
-      setCurrentTime(targetTime)
-    }
-  }
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging || !timelineRef.current) return
-      const rect = timelineRef.current.getBoundingClientRect()
-      const clickX = e.clientX - rect.left
-      const percent = Math.max(0, Math.min(1, clickX / rect.width))
-      const timeAtPos = percent * duration
-
-      if (isDragging === 'start') {
-        handleSetStart(timeAtPos)
-      } else if (isDragging === 'end') {
-        handleSetEnd(timeAtPos)
-      } else if (isDragging === 'playhead') {
-        if (videoRef.current) {
-          videoRef.current.currentTime = timeAtPos
-          setCurrentTime(timeAtPos)
-        }
-      }
-    }
-
-    const handleMouseUp = () => {
-      if (isDragging) setIsDragging(null)
-    }
-
-    if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove)
-      window.addEventListener('mouseup', handleMouseUp)
-    }
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [isDragging, duration, startTime, endTime])
-
-  if (mediaLoading) {
-    return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: 'rgba(255, 255, 255, 0.5)' }}>
-        Loading clip editor & media assets...
-      </div>
-    )
-  }
-
-  if (mediaError || !media) {
-    return (
-      <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
-        <div style={{
-          padding: '1.5rem',
-          backgroundColor: 'rgba(220, 38, 38, 0.1)',
-          border: '1px solid rgba(220, 38, 38, 0.3)',
-          borderRadius: '8px',
-          color: '#ff6b6b',
-        }}>
-          <h3>Media Asset Not Found</h3>
-          <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
-            The requested video could not be loaded into the Clip Editor.
-          </p>
+  return (
+    <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem 5rem' }}>
+      {/* Top Header & Breadcrumbs */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '1.5rem',
+        flexWrap: 'wrap',
+        gap: '1rem',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <button
-            onClick={() => navigate('/library')}
+            onClick={() => navigate(navState.searchQuery ? '/search' : `/media/${id}`)}
             style={{
-              marginTop: '1rem',
-              padding: '0.5rem 1rem',
-              backgroundColor: 'rgba(255, 255, 255, 0.1)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '6px',
+              padding: '0.45rem 0.85rem',
+              fontSize: '0.8rem',
+              backgroundColor: 'var(--bg-surface-0)',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-sm)',
             }}
           >
-            ← Return to Media Library
+            <ArrowLeft size={14} />
+            <span>Back</span>
+          </button>
+          <div>
+            <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-pure)', margin: 0 }}>
+              Clip Boundary Editor
+            </h1>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+              {media?.filename || 'Loading asset...'}
+            </p>
+          </div>
+        </div>
+
+        {/* Action Controls */}
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <button
+            onClick={() => exportMutation.mutate()}
+            disabled={exportMutation.isPending}
+            style={{
+              padding: '0.5rem 1.1rem',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              backgroundColor: 'var(--accent-primary)',
+              color: '#fff',
+              borderRadius: 'var(--radius-sm)',
+              boxShadow: 'var(--shadow-glow)',
+            }}
+          >
+            <DownloadSimple size={16} weight="bold" />
+            <span>{exportMutation.isPending ? 'Exporting MP4...' : 'Export MP4'}</span>
+          </button>
+
+          <button
+            onClick={() => saveClipMutation.mutate()}
+            disabled={saveClipMutation.isPending}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.85rem',
+              fontWeight: 500,
+              backgroundColor: 'var(--bg-surface-0)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-medium)',
+              borderRadius: 'var(--radius-sm)',
+            }}
+          >
+            <Scissors size={16} />
+            <span>Save Selection</span>
           </button>
         </div>
       </div>
-    )
-  }
 
-  const proxyUrl = getAssetUrl(media.proxy_path || media.file_path)
-  const isAdjusted = Math.abs(startTime - aiStart) > 0.05 || Math.abs(endTime - aiEnd) > 0.05
-  const selectedDuration = Math.max(0, endTime - startTime)
-
-  // Timeline percentage coordinates
-  const startPercent = duration > 0 ? (startTime / duration) * 100 : 0
-  const endPercent = duration > 0 ? (endTime / duration) * 100 : 100
-  const playheadPercent = duration > 0 ? (currentTime / duration) * 100 : 0
-  const aiStartPercent = duration > 0 ? (aiStart / duration) * 100 : 0
-  const aiEndPercent = duration > 0 ? (aiEnd / duration) * 100 : 100
-
-  return (
-    <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '1.5rem' }}>
-      {/* Header bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-            <button
-              onClick={() => navigate(-1)}
-              style={{
-                padding: '0.35rem 0.75rem',
-                fontSize: '0.8rem',
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                color: 'rgba(255, 255, 255, 0.8)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: '6px',
-              }}
-            >
-              ← Back
-            </button>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: '#fff' }}>
-              Clip Editor
-            </h1>
-            <span style={{ fontSize: '0.75rem', padding: '2px 8px', backgroundColor: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc', borderRadius: '12px', fontWeight: 600 }}>
-              Phase 7 Precision Trimmer
-            </span>
-          </div>
-          <p style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.85rem', margin: 0 }}>
-            Source: <strong style={{ color: '#fff' }}>{media.filename}</strong> ({formatTime(duration)} total, {fps.toFixed(1)} FPS)
-          </p>
-        </div>
-
-        {/* AI Origin Badge / Info */}
-        {navState.searchResult && (
-          <div style={{
-            padding: '0.5rem 0.85rem',
-            backgroundColor: 'rgba(99, 102, 241, 0.1)',
-            border: '1px solid rgba(99, 102, 241, 0.3)',
-            borderRadius: '8px',
-            fontSize: '0.8rem',
-          }}>
-            <div style={{ color: '#818cf8', fontWeight: 600 }}>
-              AI Suggested Discovery:
-            </div>
-            <div style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: '0.75rem', marginTop: '2px' }}>
-              {navState.searchResult.evidence?.explanation || `Match at ${formatTime(navState.searchResult.start_time)}`}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Main Video Viewport */}
-      <div style={{
-        backgroundColor: '#000',
-        borderRadius: '12px',
-        overflow: 'hidden',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        position: 'relative',
-        boxShadow: '0 12px 30px rgba(0, 0, 0, 0.6)',
-      }}>
-        {proxyUrl ? (
-          <video
-            ref={videoRef}
-            src={proxyUrl}
-            preload="metadata"
-            playsInline
-            onTimeUpdate={handleTimeUpdate}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
-            style={{ width: '100%', maxHeight: '460px', display: 'block' }}
-          />
-        ) : media.status === 'processing' || media.status === 'validating' ? (
-          <div style={{ padding: '5rem 2rem', textAlign: 'center', color: '#818cf8' }}>
-            <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>⏳</div>
-            <div style={{ fontWeight: 600 }}>Video Proxy Generation in Progress</div>
-            <div style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.6)', marginTop: '0.25rem' }}>
-              Preparing high-performance browser stream...
-            </div>
-          </div>
-        ) : (
-          <div style={{ padding: '5rem 2rem', textAlign: 'center', color: 'rgba(255, 255, 255, 0.5)' }}>
-            <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>⚠️</div>
-            <div style={{ fontWeight: 600 }}>Video stream unavailable</div>
-            <div style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.4)', marginTop: '0.25rem' }}>
-              Status: {media.status}
-            </div>
-          </div>
-        )}
-
-
-        {/* Overlay Current Playback info */}
+      {/* Notification Toast */}
+      {statusMsg && (
         <div style={{
-          position: 'absolute',
-          top: '12px',
-          right: '12px',
-          backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          padding: '4px 10px',
-          borderRadius: '6px',
-          fontSize: '0.8rem',
-          fontFamily: 'JetBrains Mono, monospace',
-          color: '#38bdf8',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-        }}>
-          PLAYHEAD: {formatTime(currentTime)} / {formatTime(duration)}
-        </div>
-      </div>
-
-      {/* Editor Timeline & Precision Controls Card */}
-      <div style={{
-        marginTop: '1.25rem',
-        backgroundColor: 'rgba(255, 255, 255, 0.03)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '12px',
-        padding: '1.5rem',
-      }}>
-        {/* Visual Timeline Bar */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.5)', marginBottom: '0.5rem' }}>
-            <span>00:00.000</span>
-            <span style={{ color: isAdjusted ? '#fbbf24' : '#818cf8', fontWeight: 600 }}>
-              {isAdjusted ? 'User-Adjusted Selection' : 'AI-Suggested Selection'} ({formatTime(selectedDuration)} duration)
-            </span>
-            <span>{formatTime(duration)}</span>
-          </div>
-
-          <div
-            ref={timelineRef}
-            onClick={handleTimelineClick}
-            style={{
-              position: 'relative',
-              height: '42px',
-              backgroundColor: 'rgba(0, 0, 0, 0.6)',
-              borderRadius: '8px',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              cursor: 'pointer',
-              userSelect: 'none',
-              overflow: 'hidden',
-            }}
-          >
-            {/* AI Suggestion Ghost Range */}
-            <div
-              title={`Original AI Suggestion: ${formatTime(aiStart)} - ${formatTime(aiEnd)}`}
-              style={{
-                position: 'absolute',
-                left: `${aiStartPercent}%`,
-                width: `${aiEndPercent - aiStartPercent}%`,
-                top: 0,
-                bottom: 0,
-                backgroundColor: 'rgba(99, 102, 241, 0.15)',
-                borderLeft: '1px dashed rgba(99, 102, 241, 0.6)',
-                borderRight: '1px dashed rgba(99, 102, 241, 0.6)',
-                pointerEvents: 'none',
-              }}
-            />
-
-            {/* Selected Clip Highlight Range */}
-            <div
-              style={{
-                position: 'absolute',
-                left: `${startPercent}%`,
-                width: `${endPercent - startPercent}%`,
-                top: 0,
-                bottom: 0,
-                backgroundColor: 'rgba(99, 102, 241, 0.35)',
-                borderTop: '2px solid #818cf8',
-                borderBottom: '2px solid #818cf8',
-              }}
-            />
-
-            {/* Start Handle */}
-            <div
-              onMouseDown={(e) => handleTimelineMouseDown(e, 'start')}
-              title={`START Marker: ${formatTime(startTime)}`}
-              style={{
-                position: 'absolute',
-                left: `${startPercent}%`,
-                top: 0,
-                bottom: 0,
-                width: '12px',
-                transform: 'translateX(-50%)',
-                backgroundColor: '#6366f1',
-                borderRadius: '4px 0 0 4px',
-                cursor: 'ew-resize',
-                zIndex: 10,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 0 6px rgba(0,0,0,0.8)',
-              }}
-            >
-              <div style={{ width: '2px', height: '14px', backgroundColor: '#fff' }} />
-            </div>
-
-            {/* End Handle */}
-            <div
-              onMouseDown={(e) => handleTimelineMouseDown(e, 'end')}
-              title={`END Marker: ${formatTime(endTime)}`}
-              style={{
-                position: 'absolute',
-                left: `${endPercent}%`,
-                top: 0,
-                bottom: 0,
-                width: '12px',
-                transform: 'translateX(-50%)',
-                backgroundColor: '#6366f1',
-                borderRadius: '0 4px 4px 0',
-                cursor: 'ew-resize',
-                zIndex: 10,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 0 6px rgba(0,0,0,0.8)',
-              }}
-            >
-              <div style={{ width: '2px', height: '14px', backgroundColor: '#fff' }} />
-            </div>
-
-            {/* Current Playhead Scrubber */}
-            <div
-              onMouseDown={(e) => handleTimelineMouseDown(e, 'playhead')}
-              title={`Playhead: ${formatTime(currentTime)}`}
-              style={{
-                position: 'absolute',
-                left: `${playheadPercent}%`,
-                top: 0,
-                bottom: 0,
-                width: '3px',
-                backgroundColor: '#38bdf8',
-                transform: 'translateX(-50%)',
-                cursor: 'ew-resize',
-                zIndex: 20,
-                boxShadow: '0 0 8px #38bdf8',
-              }}
-            >
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                left: '-4px',
-                width: '11px',
-                height: '8px',
-                backgroundColor: '#38bdf8',
-                borderRadius: '2px',
-              }} />
-            </div>
-          </div>
-        </div>
-
-        {/* Primary Controls Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '1.5rem', alignItems: 'center', marginBottom: '1.5rem' }}>
-          {/* Start Boundary Controls */}
-          <div style={{
-            backgroundColor: 'rgba(255, 255, 255, 0.02)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: '8px',
-            padding: '1rem',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#818cf8', textTransform: 'uppercase' }}>
-                Start Boundary
-              </span>
-              <button
-                onClick={() => handleSetStart(currentTime)}
-                style={{
-                  padding: '2px 8px',
-                  fontSize: '0.75rem',
-                  backgroundColor: 'rgba(99, 102, 241, 0.2)',
-                  color: '#a5b4fc',
-                  border: '1px solid rgba(99, 102, 241, 0.4)',
-                  borderRadius: '4px',
-                }}
-              >
-                Set to Playhead (I)
-              </button>
-            </div>
-            <div style={{ fontSize: '1.25rem', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: '#fff', marginBottom: '0.5rem' }}>
-              {formatTime(startTime)}
-            </div>
-            <div style={{ display: 'flex', gap: '0.35rem' }}>
-              <button onClick={() => handleSetStart(startTime - 1.0)} style={stepBtnStyle}>-1s</button>
-              <button onClick={() => handleSetStart(startTime - 0.1)} style={stepBtnStyle}>-0.1s</button>
-              <button onClick={() => handleSetStart(startTime + 0.1)} style={stepBtnStyle}>+0.1s</button>
-              <button onClick={() => handleSetStart(startTime + 1.0)} style={stepBtnStyle}>+1s</button>
-            </div>
-          </div>
-
-          {/* Center Playback & Frame Buttons */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <button
-                onClick={() => handleStepFrame(-1)}
-                title="Step Back 1 Frame (Left Arrow)"
-                style={actionBtnStyle}
-              >
-                ◀ Frame
-              </button>
-
-              <button
-                onClick={togglePlay}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  fontSize: '1rem',
-                  fontWeight: 600,
-                  backgroundColor: isPlaying ? '#ef4444' : '#6366f1',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 14px rgba(99, 102, 241, 0.3)',
-                }}
-              >
-                {isPlaying ? '⏸ Pause' : '▶ Play'}
-              </button>
-
-              <button
-                onClick={() => handleStepFrame(1)}
-                title="Step Forward 1 Frame (Right Arrow)"
-                style={actionBtnStyle}
-              >
-                Frame ▶
-              </button>
-            </div>
-
-            {/* Preview Selection Button */}
-            <button
-              onClick={handlePreviewSelection}
-              style={{
-                padding: '0.45rem 1rem',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                backgroundColor: isPreviewingSelection ? 'rgba(16, 185, 129, 0.3)' : 'rgba(255, 255, 255, 0.08)',
-                color: isPreviewingSelection ? '#34d399' : '#fff',
-                border: isPreviewingSelection ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '6px',
-              }}
-            >
-              🔁 Preview Selected Clip ({formatTime(selectedDuration)})
-            </button>
-          </div>
-
-          {/* End Boundary Controls */}
-          <div style={{
-            backgroundColor: 'rgba(255, 255, 255, 0.02)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: '8px',
-            padding: '1rem',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#818cf8', textTransform: 'uppercase' }}>
-                End Boundary
-              </span>
-              <button
-                onClick={() => handleSetEnd(currentTime)}
-                style={{
-                  padding: '2px 8px',
-                  fontSize: '0.75rem',
-                  backgroundColor: 'rgba(99, 102, 241, 0.2)',
-                  color: '#a5b4fc',
-                  border: '1px solid rgba(99, 102, 241, 0.4)',
-                  borderRadius: '4px',
-                }}
-              >
-                Set to Playhead (O)
-              </button>
-            </div>
-            <div style={{ fontSize: '1.25rem', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: '#fff', marginBottom: '0.5rem' }}>
-              {formatTime(endTime)}
-            </div>
-            <div style={{ display: 'flex', gap: '0.35rem' }}>
-              <button onClick={() => handleSetEnd(endTime - 1.0)} style={stepBtnStyle}>-1s</button>
-              <button onClick={() => handleSetEnd(endTime - 0.1)} style={stepBtnStyle}>-0.1s</button>
-              <button onClick={() => handleSetEnd(endTime + 0.1)} style={stepBtnStyle}>+0.1s</button>
-              <button onClick={() => handleSetEnd(endTime + 1.0)} style={stepBtnStyle}>+1s</button>
-            </div>
-          </div>
-        </div>
-
-        {/* Action Bar: Title, Save, Reset */}
-        <div style={{
+          padding: '0.75rem 1.25rem',
+          backgroundColor: statusMsg.type === 'success' ? 'var(--accent-emerald-subtle)' : 'var(--accent-rose-subtle)',
+          border: `1px solid ${statusMsg.type === 'success' ? 'var(--accent-emerald-border)' : 'var(--accent-rose-border)'}`,
+          borderRadius: 'var(--radius-md)',
+          color: statusMsg.type === 'success' ? '#34d399' : '#fb7185',
+          fontSize: '0.85rem',
+          marginBottom: '1.5rem',
           display: 'flex',
-          justifyContent: 'space-between',
           alignItems: 'center',
-          paddingTop: '1.25rem',
-          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-          flexWrap: 'wrap',
-          gap: '1rem',
+          gap: '0.5rem',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: '280px' }}>
-            <span style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.6)' }}>Clip Title:</span>
-            <input
-              type="text"
-              value={clipTitle}
-              onChange={(e) => setClipTitle(e.target.value)}
-              placeholder="Clip title..."
-              style={{
-                flex: 1,
-                padding: '0.45rem 0.75rem',
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '6px',
-                color: '#fff',
-                fontSize: '0.875rem',
-              }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-            <button
-              onClick={handleResetToAI}
-              style={{
-                padding: '0.55rem 1rem',
-                fontSize: '0.85rem',
-                backgroundColor: 'transparent',
-                color: 'rgba(255, 255, 255, 0.7)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '6px',
-              }}
-            >
-              ↺ Reset to AI Suggestion
-            </button>
-
-            <button
-              onClick={() => saveClipMutation.mutate()}
-              disabled={saveClipMutation.isPending}
-              style={{
-                padding: '0.55rem 1.25rem',
-                fontSize: '0.9rem',
-                fontWeight: 600,
-                backgroundColor: '#10b981',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: saveClipMutation.isPending ? 'not-allowed' : 'pointer',
-                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
-              }}
-            >
-              {saveClipMutation.isPending ? 'Saving...' : '💾 Save Clip Selection'}
-            </button>
-          </div>
-        </div>
-
-        {saveSuccessMsg && (
-          <div style={{
-            marginTop: '1rem',
-            padding: '0.75rem',
-            backgroundColor: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid rgba(16, 185, 129, 0.3)',
-            borderRadius: '6px',
-            color: '#34d399',
-            fontSize: '0.875rem',
-            textAlign: 'center',
-          }}>
-            {saveSuccessMsg}
-          </div>
-        )}
-      </div>
-
-      {/* Saved Clips Section */}
-      {savedClipsData && savedClipsData.clips.length > 0 && (
-        <div style={{
-          marginTop: '2rem',
-          backgroundColor: 'rgba(255, 255, 255, 0.02)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '12px',
-          padding: '1.5rem',
-        }}>
-          <h2 style={{ fontSize: '1.15rem', fontWeight: 600, marginBottom: '1rem', color: '#fff' }}>
-            Saved Clip Selections ({savedClipsData.total_clips})
-          </h2>
-          <div style={{ display: 'grid', gap: '0.75rem' }}>
-            {savedClipsData.clips.map((c: Clip) => (
-              <div
-                key={c.id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '0.75rem 1rem',
-                  backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: '8px',
-                }}
-              >
-                <div>
-                  <strong style={{ color: '#fff', fontSize: '0.9rem' }}>{c.title}</strong>
-                  <div style={{ fontSize: '0.75rem', color: '#818cf8', marginTop: '2px' }}>
-                    Range: {formatTime(c.start_time)} – {formatTime(c.end_time)} ({c.duration.toFixed(2)}s)
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    onClick={() => {
-                      setStartTime(c.start_time)
-                      setEndTime(c.end_time)
-                      if (videoRef.current) {
-                        videoRef.current.currentTime = c.start_time
-                      }
-                    }}
-                    style={{
-                      padding: '0.35rem 0.75rem',
-                      fontSize: '0.75rem',
-                      backgroundColor: 'rgba(99, 102, 241, 0.2)',
-                      color: '#a5b4fc',
-                      border: '1px solid rgba(99, 102, 241, 0.4)',
-                      borderRadius: '4px',
-                    }}
-                  >
-                    Load in Timeline
-                  </button>
-                  <button
-                    onClick={async () => {
-                      await mediaService.deleteClip(c.id)
-                      queryClient.invalidateQueries({ queryKey: ['media-clips', id] })
-                    }}
-                    style={{
-                      padding: '0.35rem 0.6rem',
-                      fontSize: '0.75rem',
-                      backgroundColor: 'rgba(220, 38, 38, 0.1)',
-                      color: '#ff6b6b',
-                      border: '1px solid rgba(220, 38, 38, 0.2)',
-                      borderRadius: '4px',
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+          {statusMsg.type === 'success' ? <CheckCircle size={18} weight="bold" /> : <WarningCircle size={18} weight="bold" />}
+          <span>{statusMsg.text}</span>
         </div>
       )}
 
-      {/* Keyboard Shortcuts Documentation Footer */}
-      <div style={{
-        marginTop: '1.5rem',
-        padding: '1rem',
-        backgroundColor: 'rgba(255, 255, 255, 0.01)',
-        border: '1px solid rgba(255, 255, 255, 0.05)',
-        borderRadius: '8px',
-        fontSize: '0.75rem',
-        color: 'rgba(255, 255, 255, 0.5)',
-        display: 'flex',
-        justifyContent: 'space-around',
-        flexWrap: 'wrap',
-        gap: '0.75rem',
-      }}>
-        <span>⌨️ <strong>Space:</strong> Play / Pause</span>
-        <span>⌨️ <strong>I:</strong> Mark Start Boundary</span>
-        <span>⌨️ <strong>O:</strong> Mark End Boundary</span>
-        <span>⌨️ <strong>← / →:</strong> Step 1 Frame</span>
-        <span>⌨️ <strong>Shift + ← / →:</strong> Step 5 Frames</span>
+      {/* Main Workspace Layout */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '1.5rem', alignItems: 'start' }}>
+        {/* Left Column: Player & Precision Timeline */}
+        <div>
+          {/* Video Player */}
+          <div style={{
+            backgroundColor: '#000',
+            borderRadius: 'var(--radius-lg)',
+            overflow: 'hidden',
+            border: '1px solid var(--border-subtle)',
+            boxShadow: 'var(--shadow-lg)',
+            marginBottom: '1.25rem',
+          }}>
+            {proxyUrl ? (
+              <video
+                ref={videoRef}
+                src={proxyUrl}
+                onTimeUpdate={handleTimeUpdate}
+                style={{ width: '100%', maxHeight: '480px', display: 'block' }}
+              />
+            ) : (
+              <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-dim)' }}>
+                Loading video proxy...
+              </div>
+            )}
+          </div>
+
+          {/* Timeline & Boundary Controls Bar */}
+          <div style={{
+            backgroundColor: 'var(--bg-surface-0)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            padding: '1.25rem',
+          }}>
+            {/* Range Scrubber Track */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', fontFamily: 'JetBrains Mono, monospace' }}>
+                <span>00:00.000</span>
+                <span style={{ color: '#818cf8', fontWeight: 600 }}>Current: {formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+
+              {/* Visual Multi-Handle Range Bar */}
+              <div
+                ref={timelineRef}
+                onClick={(e) => {
+                  if (!timelineRef.current || !duration) return
+                  const rect = timelineRef.current.getBoundingClientRect()
+                  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+                  const targetTime = pct * duration
+                  if (videoRef.current) {
+                    videoRef.current.currentTime = targetTime
+                  }
+                }}
+                style={{
+                  position: 'relative',
+                  height: '28px',
+                  backgroundColor: 'var(--bg-surface-2)',
+                  borderRadius: 'var(--radius-sm)',
+                  cursor: 'pointer',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Active Clip Region Highlight */}
+                {duration > 0 && (
+                  <div style={{
+                    position: 'absolute',
+                    left: `${(startTime / duration) * 100}%`,
+                    width: `${((endTime - startTime) / duration) * 100}%`,
+                    top: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(99, 102, 241, 0.35)',
+                    borderLeft: '2px solid #818cf8',
+                    borderRight: '2px solid #818cf8',
+                  }} />
+                )}
+
+                {/* Playhead Marker */}
+                {duration > 0 && (
+                  <div style={{
+                    position: 'absolute',
+                    left: `${(currentTime / duration) * 100}%`,
+                    top: 0,
+                    bottom: 0,
+                    width: '2px',
+                    backgroundColor: '#fff',
+                    boxShadow: '0 0 8px rgba(255, 255, 255, 0.8)',
+                    zIndex: 2,
+                  }} />
+                )}
+              </div>
+            </div>
+
+            {/* Transport & Boundary Sliders */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '1rem',
+            }}>
+              {/* Playback & Stepping Controls */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <button
+                  onClick={togglePlay}
+                  style={{
+                    padding: '0.5rem 0.95rem',
+                    backgroundColor: 'var(--accent-primary)',
+                    color: '#fff',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                  }}
+                  title="Play/Pause [Space]"
+                >
+                  {isPlaying ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}
+                  <span>{isPlaying ? 'Pause' : 'Play'}</span>
+                </button>
+
+                <button
+                  onClick={handlePreviewSelection}
+                  style={{
+                    padding: '0.5rem 0.85rem',
+                    backgroundColor: 'var(--accent-primary-subtle)',
+                    color: '#a5b4fc',
+                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.82rem',
+                    fontWeight: 500,
+                  }}
+                  title="Loop / Preview selected boundaries only"
+                >
+                  <Play size={14} />
+                  <span>Preview Clip ({clipDuration.toFixed(1)}s)</span>
+                </button>
+
+                <button
+                  onClick={() => handleStepFrame(-1)}
+                  style={{
+                    padding: '0.5rem 0.65rem',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    color: 'var(--text-secondary)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.78rem',
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                  title="Step -1 frame [Left Arrow]"
+                >
+                  -1f
+                </button>
+
+                <button
+                  onClick={() => handleStepFrame(1)}
+                  style={{
+                    padding: '0.5rem 0.65rem',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    color: 'var(--text-secondary)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.78rem',
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                  title="Step +1 frame [Right Arrow]"
+                >
+                  +1f
+                </button>
+              </div>
+
+              {/* Set IN / OUT buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button
+                  onClick={() => handleSetStart(currentTime)}
+                  style={{
+                    padding: '0.45rem 0.75rem',
+                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                    color: 'var(--text-pure)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                  }}
+                  title="Set Start Point [I]"
+                >
+                  [ Set IN (I)
+                </button>
+
+                <button
+                  onClick={() => handleSetEnd(currentTime)}
+                  style={{
+                    padding: '0.45rem 0.75rem',
+                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                    color: 'var(--text-pure)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                  }}
+                  title="Set End Point [O]"
+                >
+                  ] Set OUT (O)
+                </button>
+
+                {navState.searchResult && (
+                  <button
+                    onClick={handleResetToAI}
+                    style={{
+                      padding: '0.45rem 0.75rem',
+                      backgroundColor: 'transparent',
+                      color: 'var(--text-secondary)',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '0.78rem',
+                    }}
+                    title="Reset to AI search moment boundaries"
+                  >
+                    <ArrowCounterClockwise size={14} />
+                    <span>Reset AI</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Clip Meta & Saved Selections */}
+        <div>
+          {/* Active Clip Card */}
+          <div className="card-surface" style={{ padding: '1.25rem', marginBottom: '1.25rem' }}>
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-pure)', marginBottom: '0.75rem' }}>
+              Clip Parameters
+            </h3>
+
+            <div style={{ marginBottom: '0.85rem' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.3rem' }}>
+                Clip Title
+              </label>
+              <input
+                type="text"
+                value={clipTitle}
+                onChange={(e) => setClipTitle(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.55rem 0.75rem',
+                  fontSize: '0.85rem',
+                  backgroundColor: 'var(--bg-surface-1)',
+                  border: '1px solid var(--border-medium)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--text-pure)',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>
+                  Start (IN)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max={endTime - 0.1}
+                  value={startTime}
+                  onChange={(e) => handleSetStart(parseFloat(e.target.value) || 0)}
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem 0.65rem',
+                    fontSize: '0.85rem',
+                    fontFamily: 'JetBrains Mono, monospace',
+                    backgroundColor: 'var(--bg-surface-1)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--text-pure)',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>
+                  End (OUT)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min={startTime + 0.1}
+                  max={duration}
+                  value={endTime}
+                  onChange={(e) => handleSetEnd(parseFloat(e.target.value) || duration)}
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem 0.65rem',
+                    fontSize: '0.85rem',
+                    fontFamily: 'JetBrains Mono, monospace',
+                    backgroundColor: 'var(--bg-surface-1)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--text-pure)',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{
+              padding: '0.75rem',
+              backgroundColor: 'var(--bg-surface-1)',
+              borderRadius: 'var(--radius-sm)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '0.8rem',
+              fontFamily: 'JetBrains Mono, monospace',
+            }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Selected Duration</span>
+              <strong style={{ color: '#22d3ee' }}>{clipDuration.toFixed(3)}s</strong>
+            </div>
+          </div>
+
+          {/* Saved Clips List */}
+          <div className="card-surface" style={{ padding: '1.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-pure)' }}>
+                Saved Clips ({savedClipsData?.total_clips || 0})
+              </h3>
+            </div>
+
+            {savedClipsData?.clips && savedClipsData.clips.length > 0 ? (
+              <div style={{ display: 'grid', gap: '0.65rem', maxHeight: '340px', overflowY: 'auto' }}>
+                {savedClipsData.clips.map((clip: Clip) => (
+                  <div
+                    key={clip.id}
+                    style={{
+                      padding: '0.65rem',
+                      backgroundColor: 'var(--bg-surface-1)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-pure)', display: 'block' }}>
+                        {clip.title}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: '#818cf8', fontFamily: 'JetBrains Mono, monospace' }}>
+                        {formatTime(clip.start_time)} – {formatTime(clip.end_time)} ({clip.duration.toFixed(1)}s)
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.3rem' }}>
+                      <button
+                        onClick={() => {
+                          setStartTime(clip.start_time)
+                          setEndTime(clip.end_time)
+                          if (videoRef.current) {
+                            videoRef.current.currentTime = clip.start_time
+                          }
+                        }}
+                        style={{
+                          background: 'transparent',
+                          color: '#a5b4fc',
+                          padding: '2px 5px',
+                        }}
+                        title="Load boundaries"
+                      >
+                        <Play size={14} />
+                      </button>
+                      <button
+                        onClick={() => deleteClipMutation.mutate(clip.id)}
+                        style={{
+                          background: 'transparent',
+                          color: 'var(--text-dim)',
+                          padding: '2px 5px',
+                        }}
+                        title="Delete saved clip"
+                      >
+                        <Trash size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
+                No saved clips for this media yet.
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )
-}
-
-const stepBtnStyle: React.CSSProperties = {
-  flex: 1,
-  padding: '0.3rem 0',
-  fontSize: '0.75rem',
-  backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  color: 'rgba(255, 255, 255, 0.8)',
-  border: '1px solid rgba(255, 255, 255, 0.1)',
-  borderRadius: '4px',
-}
-
-const actionBtnStyle: React.CSSProperties = {
-  padding: '0.5rem 0.85rem',
-  fontSize: '0.8rem',
-  backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  color: 'rgba(255, 255, 255, 0.8)',
-  border: '1px solid rgba(255, 255, 255, 0.15)',
-  borderRadius: '6px',
 }

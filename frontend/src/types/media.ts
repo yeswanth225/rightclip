@@ -178,3 +178,15 @@ export interface ClipListResponse {
   total_clips: number
   clips: Clip[]
 }
+
+export interface ClipExportResponse {
+  clip_id?: number
+  media_id: number
+  title: string
+  start_time: number
+  end_time: number
+  duration: number
+  export_path: string
+  download_url: string
+}
+

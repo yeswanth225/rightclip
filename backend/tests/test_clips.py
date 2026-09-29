@@ -120,11 +120,20 @@ def test_clip_crud_and_validation():
         assert updated["end_time"] == 5.0
         assert updated["duration"] == 4.0
 
-        # 10. Test Delete Clip
+        # 10. Test Export Endpoint with missing file
+        res_export_missing = client.post(f"/api/clips/{clip_id}/export")
+        # Should return 400 since media file_path is dummy
+        assert res_export_missing.status_code == 400
+
+        # 11. Test Export Moment Endpoint with invalid range
+        res_export_moment_bad = client.post(f"/api/media/{asset.id}/export-clip?start_time=6.0&end_time=4.0")
+        assert res_export_moment_bad.status_code == 400
+
+        # 12. Test Delete Clip
         res_del = client.delete(f"/api/clips/{clip_id}")
         assert res_del.status_code == 204
 
-        # 11. Verify Deletion
+        # 13. Verify Deletion
         res_get_deleted = client.get(f"/api/clips/{clip_id}")
         assert res_get_deleted.status_code == 404
 
@@ -134,3 +143,4 @@ def test_clip_crud_and_validation():
         db.query(MediaAsset).filter(MediaAsset.id == asset.id).delete()
         db.commit()
         db.close()
+

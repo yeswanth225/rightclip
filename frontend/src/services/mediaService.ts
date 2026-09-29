@@ -175,4 +175,45 @@ export const mediaService = {
   async deleteClip(clipId: number): Promise<void> {
     await api.delete(`/api/clips/${clipId}`)
   },
+
+  // Export Saved Clip as physical MP4
+  async exportClip(clipId: number): Promise<{
+    clip_id: number
+    media_id: number
+    title: string
+    start_time: number
+    end_time: number
+    duration: number
+    export_path: string
+    download_url: string
+  }> {
+    const response = await api.post(`/api/clips/${clipId}/export`)
+    return response.data
+  },
+
+  // Export arbitrary moment as physical MP4 on the fly
+  async exportMoment(
+    mediaId: number,
+    startTime: number,
+    endTime: number,
+    title = 'Exported Moment'
+  ): Promise<{
+    media_id: number
+    title: string
+    start_time: number
+    end_time: number
+    duration: number
+    export_path: string
+    download_url: string
+  }> {
+    const response = await api.post(`/api/media/${mediaId}/export-clip`, null, {
+      params: {
+        start_time: startTime,
+        end_time: endTime,
+        title,
+      },
+    })
+    return response.data
+  },
 }
+

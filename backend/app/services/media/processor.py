@@ -325,6 +325,75 @@ class FFmpegProcessor:
         return thumbnail_path
 
     @classmethod
+    def export_clip(
+        cls,
+        source_path: Path | str,
+        target_path: Path | str,
+        start_time: float,
+        end_time: float,
+    ) -> Path:
+        """
+        Extract and transcode a precise sub-clip from start_time to end_time as an optimized MP4.
+
+        Args:
+            source_path: Path to source video file (original or proxy)
+            target_path: Target path for output clip MP4
+            start_time: Start timestamp in seconds
+            end_time: End timestamp in seconds
+
+        Returns:
+            Path to generated clip file
+
+        Raises:
+            RuntimeError: If FFmpeg trimming fails
+        """
+        source_path = Path(source_path).resolve()
+        target_path = Path(target_path).resolve()
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if not source_path.exists():
+            raise FileNotFoundError(f"Source video file not found at {source_path}")
+
+        duration = max(0.1, end_time - start_time)
+
+        # Use fast seeking before -i and precise duration with -t
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-ss", f"{max(0.0, float(start_time)):.3f}",
+            "-i", str(source_path),
+            "-t", f"{duration:.3f}",
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-preset", "fast",
+            "-crf", "22",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-movflags", "+faststart",
+            str(target_path),
+        ]
+
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=120)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            if target_path.exists():
+                try:
+                    target_path.unlink()
+                except Exception:
+                    pass
+            err_msg = getattr(e, "stderr", str(e))
+            logger.error(f"FFmpeg clip export failed for {source_path} [{start_time}-{end_time}]: {err_msg}")
+            raise RuntimeError(f"FFmpeg clip export failed: {err_msg}")
+
+        if not target_path.exists() or target_path.stat().st_size == 0:
+            if target_path.exists():
+                target_path.unlink()
+            raise RuntimeError(f"Exported clip file is missing or 0 bytes: {target_path}")
+
+        logger.info(f"Successfully exported clip: {target_path} ({duration:.2f}s, {target_path.stat().st_size} bytes)")
+        return target_path
+
+    @classmethod
     def verify_generated_proxy(cls, proxy_path: Path | str) -> bool:
         """
         Verify if a proxy file exists, is non-zero, and contains valid playable video streams.
