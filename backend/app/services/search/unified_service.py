@@ -44,7 +44,8 @@ class UnifiedSearchService:
     @staticmethod
     def _normalize_query_tokens(query: str) -> List[str]:
         """Extract clean alphanumeric query tokens for keyword and lexical matching"""
-        tokens = re.findall(r"\b[a-zA-Z0-9_-]{2,}\b", query.lower())
+        clean = query.strip(' "\'“”‘’')
+        tokens = re.findall(r"\b[a-zA-Z0-9_-]{2,}\b", clean.lower())
         stop_words = {
             "the", "a", "an", "and", "or", "in", "on", "at", "of", "to", "for", "with",
             "is", "are", "was", "were", "it", "this", "that", "there", "show", "find",
@@ -61,9 +62,11 @@ class UnifiedSearchService:
         limit: int = 40,
     ) -> List[Dict[str, Any]]:
         """
-        Search speech transcript segments using exact, token-overlap, and semantic sub-clause matching.
+        Search speech transcript segments using exact phrase, token-overlap, and semantic matching.
         """
-        clean_query = query.strip().lower()
+        raw_query = query.strip()
+        is_quoted = (raw_query.startswith('"') and raw_query.endswith('"')) or (raw_query.startswith("'") and raw_query.endswith("'"))
+        clean_query = raw_query.strip(' "\'“”‘’').lower()
         if not clean_query:
             return []
 
@@ -76,13 +79,9 @@ class UnifiedSearchService:
             stmt = stmt.filter(TranscriptSegment.media_id == media_id)
 
         # Retrieve candidate segments
-        candidate_segments: List[TranscriptSegment] = []
-        if len(tokens) == 1:
-            candidate_segments = stmt.filter(TranscriptSegment.text.ilike(f"%{tokens[0]}%")).all()
-        else:
-            from sqlalchemy import or_
-            filters = [TranscriptSegment.text.ilike(f"%{t}%") for t in tokens]
-            candidate_segments = stmt.filter(or_(*filters)).all()
+        from sqlalchemy import or_
+        filters = [TranscriptSegment.text.ilike(f"%{t}%") for t in tokens]
+        candidate_segments: List[TranscriptSegment] = stmt.filter(or_(*filters)).all()
 
         results: List[Dict[str, Any]] = []
 
@@ -96,18 +95,21 @@ class UnifiedSearchService:
             token_ratio = token_matches / len(tokens)
             
             # Phrase bonus if exact continuous words appear
-            exact_phrase = 0.4 if clean_query in seg_text else 0.0
+            exact_phrase = 0.5 if clean_query in seg_text else 0.0
             
             # Partial subphrase score
             subphrase_bonus = 0.0
             words = clean_query.split()
-            if len(words) >= 3:
+            if len(words) >= 2:
                 for i in range(len(words) - 1):
                     pair = f"{words[i]} {words[i+1]}"
                     if pair in seg_text:
-                        subphrase_bonus += 0.15
+                        subphrase_bonus += 0.2
 
-            raw_score = (token_ratio * 0.5) + exact_phrase + subphrase_bonus
+            raw_score = (token_ratio * 0.4) + exact_phrase + subphrase_bonus
+            if is_quoted and exact_phrase > 0:
+                raw_score = 1.0  # Exact quote match gets full score
+
             score = min(1.0, round(raw_score, 4))
 
             results.append({

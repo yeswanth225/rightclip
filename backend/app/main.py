@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
+from app import models  # noqa: F401 - Register all ORM models with Base.metadata
 from app.api import clips, health, media, scenes, search, transcript, visual
 from app.core.config import get_settings
 from app.core.database import Base, engine

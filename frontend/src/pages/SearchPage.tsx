@@ -17,6 +17,8 @@ import {
   ArrowSquareOut,
   SpinnerGap,
   WarningCircle,
+  CheckCircle,
+  ArrowsClockwise,
 } from '@phosphor-icons/react'
 import { mediaService } from '../services/mediaService'
 import { getAssetUrl } from '../utils/assets'
@@ -35,12 +37,14 @@ export default function SearchPage() {
   const [searchMode, setSearchMode] = useState<SearchModeType>(initialMode)
   const [selectedMediaId, setSelectedMediaId] = useState<number | undefined>(initialMediaId)
   const [selectedResult, setSelectedResult] = useState<UnifiedSearchResult | null>(null)
-  const [exportMessage, setExportMessage] = useState<string>('')
-
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [isLoopingMoment, setIsLoopingMoment] = useState(false)
+  const [exportMessage, setExportMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
 
   // Reference Image state
   const [referenceImageB64, setReferenceImageB64] = useState<string | null>(null)
   const [referenceImageName, setReferenceImageName] = useState<string>('')
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
@@ -56,6 +60,34 @@ export default function SearchPage() {
     if (m !== searchMode) setSearchMode(m)
     if (mid !== selectedMediaId) setSelectedMediaId(mid)
   }, [searchParams])
+
+  // Global Keyboard Shortcuts (Ctrl+K or / to focus search, Space to toggle video playback)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeElement = document.activeElement as HTMLElement | null
+      const isInputActive = activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement.tagName)
+
+      if ((e.key === '/' || ((e.metaKey || e.ctrlKey) && e.key === 'k')) && !isInputActive) {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+      } else if (e.key === 'Escape' && isInputActive) {
+        searchInputRef.current?.blur()
+      } else if (e.code === 'Space' && !isInputActive && selectedResult && videoRef.current) {
+        e.preventDefault()
+        if (videoRef.current.paused) {
+          videoRef.current.play().catch(() => {})
+          setIsPlaying(true)
+        } else {
+          videoRef.current.pause()
+          setIsPlaying(false)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedResult])
 
   // Query search execution
   const hasValidQuery = !!activeQuery.trim() || !!referenceImageB64
@@ -88,19 +120,18 @@ export default function SearchPage() {
         `Clip_${result.media_filename.replace(/\.[^/.]+$/, '')}_${result.start_time}s`
       ),
     onSuccess: (data) => {
-      setExportMessage(`Export ready: ${data.export_path}`)
-      // Trigger download
+      setExportMessage({ text: `✓ MP4 clip exported (${data.duration}s). Downloading...`, type: 'success' })
       const a = document.createElement('a')
       a.href = data.download_url
       a.download = `clip_${data.media_id}_${data.start_time}s_${data.end_time}s.mp4`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      setTimeout(() => setExportMessage(''), 4000)
+      setTimeout(() => setExportMessage(null), 5000)
     },
     onError: (err: any) => {
-      setExportMessage(`Export error: ${err?.response?.data?.detail || err.message}`)
-      setTimeout(() => setExportMessage(''), 5000)
+      setExportMessage({ text: `Export failed: ${err?.response?.data?.detail || err.message}`, type: 'error' })
+      setTimeout(() => setExportMessage(null), 5000)
     },
   })
 
@@ -152,12 +183,21 @@ export default function SearchPage() {
 
   const handleSeek = (result: UnifiedSearchResult) => {
     setSelectedResult(result)
+    setIsPlaying(true)
     if (videoRef.current) {
       videoRef.current.currentTime = result.representative_timestamp
       videoRef.current.play().catch(() => {})
     }
   }
 
+  const handleVideoTimeUpdate = () => {
+    if (!videoRef.current || !selectedResult || !isLoopingMoment) return
+    const cur = videoRef.current.currentTime
+    if (cur >= selectedResult.end_time || cur < selectedResult.start_time) {
+      videoRef.current.currentTime = selectedResult.start_time
+      videoRef.current.play().catch(() => {})
+    }
+  }
 
   const activeMedia = selectedResult
     ? (mediaList || []).find((m) => m.id === selectedResult.media_id)
@@ -166,33 +206,60 @@ export default function SearchPage() {
   const proxyUrl = getAssetUrl(activeMedia?.proxy_path || activeMedia?.file_path)
 
   const modes: { id: SearchModeType; label: string; desc: string; icon: any }[] = [
-    { id: 'hybrid', label: 'Everything', desc: 'Intelligent multimodal fusion across dialogue, action & vision', icon: Sparkle },
-    { id: 'action', label: 'Actions / Events', desc: 'Physical movement, kinetic events & actions', icon: Lightning },
-    { id: 'dialogue', label: 'Spoken Dialogue', desc: 'Exact and semantic transcript speech search', icon: ChatCircleText },
-    { id: 'visual', label: 'Visual Scenes', desc: 'OpenCLIP visual semantic similarity matching', icon: Eye },
-    { id: 'person', label: 'Person Reference', desc: 'Face and person appearance detection from photo', icon: User },
+    { id: 'hybrid', label: 'Everything (Fusion)', desc: 'Cross-modal fusion across dialogue, actions, visuals & faces', icon: Sparkle },
+    { id: 'action', label: 'Actions & Events', desc: 'Detects physical motion, transitions & scene events', icon: Lightning },
+    { id: 'dialogue', label: 'Spoken Dialogue', desc: 'Speech-to-text exact & semantic dialogue matching', icon: ChatCircleText },
+    { id: 'visual', label: 'Visual Scenes', desc: 'OpenCLIP visual semantic appearance & object vectors', icon: Eye },
+    { id: 'person', label: 'Person Reference', desc: 'Face & appearance matching from reference photo', icon: User },
+  ]
+
+  const suggestedQueries = [
+    { text: 'the character walks into the room', mode: 'action' as const },
+    { text: 'he picks up the phone', mode: 'action' as const },
+    { text: '"we need to leave now"', mode: 'dialogue' as const },
+    { text: 'blue car at night', mode: 'visual' as const },
+    { text: 'person standing near a building', mode: 'visual' as const },
   ]
 
   return (
-    <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '2.5rem 1.5rem 5rem' }}>
-      {/* Search Bar Workspace */}
-      <div style={{ marginBottom: '2rem', maxWidth: '880px', margin: '0 auto 2.5rem' }}>
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <h1 style={{
-            fontSize: '2rem',
-            fontWeight: 800,
-            letterSpacing: '-0.025em',
-            color: 'var(--text-pure)',
-            marginBottom: '0.35rem',
+    <div style={{ maxWidth: '1360px', margin: '0 auto', padding: '2.5rem 1.5rem 5rem' }}>
+      {/* Search Header Workspace */}
+      <div style={{ marginBottom: '2.5rem', maxWidth: '960px', margin: '0 auto 2.5rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            padding: '0.25rem 0.75rem',
+            backgroundColor: 'var(--accent-primary-subtle)',
+            border: '1px solid rgba(99, 102, 241, 0.3)',
+            borderRadius: 'var(--radius-pill)',
+            color: '#a5b4fc',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            marginBottom: '0.75rem',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
           }}>
-            Multimodal Moment Search
+            <Sparkle size={14} weight="fill" />
+            <span>AI Multimodal Video Moment Retrieval</span>
+          </div>
+
+          <h1 style={{
+            fontSize: '2.25rem',
+            fontWeight: 800,
+            letterSpacing: '-0.03em',
+            color: 'var(--text-pure)',
+            marginBottom: '0.4rem',
+          }}>
+            Search Video Moments
           </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Natural language video search powered by speech dialogue, visual vectors, temporal actions, and face references.
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', maxWidth: '600px', margin: '0 auto' }}>
+            Find exact video scenes by describing actions, quoting dialogue, detailing visual concepts, or providing a reference photo.
           </p>
         </div>
 
-        {/* Search Input Container */}
+        {/* Primary Search Command Bar */}
         <form onSubmit={handleSearchSubmit}>
           <div style={{
             backgroundColor: 'var(--bg-surface-0)',
@@ -202,7 +269,7 @@ export default function SearchPage() {
             boxShadow: 'var(--shadow-md)',
             transition: 'border-color 0.15s ease',
           }}>
-            {/* Reference Image Tray if present */}
+            {/* Reference Image Badge if attached */}
             {referenceImageB64 && (
               <div style={{
                 display: 'inline-flex',
@@ -220,7 +287,7 @@ export default function SearchPage() {
                   style={{ width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' }}
                 />
                 <span style={{ fontSize: '0.78rem', color: '#c084fc', fontWeight: 600 }}>
-                  Reference Photo: {referenceImageName || 'Selected Image'}
+                  Reference Photo: {referenceImageName || 'Selected Photo'}
                 </span>
                 <button
                   type="button"
@@ -240,11 +307,12 @@ export default function SearchPage() {
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
               <MagnifyingGlass size={20} color="var(--text-muted)" />
               <input
+                ref={searchInputRef}
                 type="text"
                 placeholder={
                   referenceImageB64
-                    ? "e.g. 'when this character enters the room' or 'says they are leaving' (or leave empty for all appearances)"
-                    : "Search by action ('character opens the door'), dialogue ('we have to leave'), or visual scene ('blue car at night')"
+                    ? "e.g. 'when this character enters the room' (or leave empty for all appearances)"
+                    : "Search actions ('character walks into the room'), dialogue ('\"we need to leave\"'), or visuals ('blue car at night')"
                 }
                 value={queryInput}
                 onChange={(e) => setQueryInput(e.target.value)}
@@ -253,12 +321,56 @@ export default function SearchPage() {
                   background: 'transparent',
                   border: 'none',
                   color: 'var(--text-pure)',
-                  fontSize: '1rem',
+                  fontSize: '1.02rem',
                   padding: '0.35rem 0',
                 }}
               />
 
-              {/* Reference Image Trigger */}
+              {queryInput && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQueryInput('')
+                    searchInputRef.current?.focus()
+                  }}
+                  style={{
+                    background: 'transparent',
+                    color: 'var(--text-muted)',
+                    padding: '4px',
+                  }}
+                  title="Clear input [Esc]"
+                >
+                  <X size={16} />
+                </button>
+              )}
+
+              {/* Media Filter Selector */}
+              {mediaList && mediaList.length > 1 && (
+                <select
+                  value={selectedMediaId || ''}
+                  onChange={(e) => setSelectedMediaId(e.target.value ? Number(e.target.value) : undefined)}
+                  style={{
+                    padding: '0.45rem 0.75rem',
+                    fontSize: '0.78rem',
+                    backgroundColor: 'var(--bg-surface-1)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--text-secondary)',
+                    maxWidth: '160px',
+                    cursor: 'pointer',
+                  }}
+                  title="Filter search to a specific video"
+                >
+                  <option value="">All Videos ({mediaList.length})</option>
+                  {mediaList.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.filename}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Reference Image Picker */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -281,7 +393,7 @@ export default function SearchPage() {
                 }}
               >
                 <ImageIcon size={16} />
-                <span>{referenceImageB64 ? 'Change Ref' : '+ Ref Image'}</span>
+                <span>{referenceImageB64 ? 'Change Ref' : '+ Ref Photo'}</span>
               </button>
 
               <button
@@ -295,6 +407,7 @@ export default function SearchPage() {
                   color: '#fff',
                   borderRadius: 'var(--radius-sm)',
                   opacity: isLoading || (!queryInput.trim() && !referenceImageB64) ? 0.6 : 1,
+                  boxShadow: '0 2px 10px rgba(99, 102, 241, 0.3)',
                 }}
               >
                 {isLoading ? (
@@ -313,7 +426,7 @@ export default function SearchPage() {
           <div style={{
             display: 'flex',
             justifyContent: 'center',
-            gap: '0.45rem',
+            gap: '0.5rem',
             marginTop: '1rem',
             flexWrap: 'wrap',
           }}>
@@ -326,7 +439,7 @@ export default function SearchPage() {
                   type="button"
                   onClick={() => setSearchMode(m.id)}
                   style={{
-                    padding: '0.35rem 0.8rem',
+                    padding: '0.38rem 0.85rem',
                     fontSize: '0.78rem',
                     fontWeight: active ? 600 : 500,
                     color: active ? 'var(--text-pure)' : 'var(--text-secondary)',
@@ -343,30 +456,68 @@ export default function SearchPage() {
               )
             })}
           </div>
+
+          {/* Quick Clickable Suggestions */}
+          {!hasValidQuery && (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: '0.45rem',
+              flexWrap: 'wrap',
+              marginTop: '1.25rem',
+            }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Examples:
+              </span>
+              {suggestedQueries.map((item) => (
+                <button
+                  key={item.text}
+                  type="button"
+                  onClick={() => {
+                    setQueryInput(item.text)
+                    setActiveQuery(item.text)
+                    setSearchMode(item.mode)
+                    setSearchParams({ q: item.text, mode: item.mode })
+                  }}
+                  style={{
+                    padding: '0.22rem 0.6rem',
+                    fontSize: '0.75rem',
+                    backgroundColor: 'var(--bg-surface-0)',
+                    color: 'var(--text-secondary)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-pill)',
+                  }}
+                >
+                  <span>{item.text}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </form>
       </div>
 
-      {/* Export Notification Toast */}
+      {/* Export Status Notification */}
       {exportMessage && (
         <div style={{
           padding: '0.75rem 1.25rem',
-          backgroundColor: 'var(--bg-surface-elevated)',
-          border: '1px solid var(--border-active)',
+          backgroundColor: exportMessage.type === 'success' ? 'var(--accent-emerald-subtle)' : 'var(--accent-rose-subtle)',
+          border: `1px solid ${exportMessage.type === 'success' ? 'var(--accent-emerald-border)' : 'var(--accent-rose-border)'}`,
           borderRadius: 'var(--radius-md)',
-          color: 'var(--text-pure)',
+          color: exportMessage.type === 'success' ? '#34d399' : '#fb7185',
           fontSize: '0.85rem',
-          marginBottom: '1.5rem',
+          marginBottom: '1.75rem',
           display: 'flex',
           alignItems: 'center',
           gap: '0.6rem',
           boxShadow: 'var(--shadow-md)',
         }}>
-          <DownloadSimple size={18} color="#818cf8" weight="bold" />
-          <span>{exportMessage}</span>
+          {exportMessage.type === 'success' ? <CheckCircle size={18} weight="bold" /> : <WarningCircle size={18} weight="bold" />}
+          <span>{exportMessage.text}</span>
         </div>
       )}
 
-      {/* Synchronized Moment Player Workspace */}
+      {/* Synchronized Moment Player Workspace (Desktop Video Inspector) */}
       {selectedResult && (
         <div style={{
           backgroundColor: 'var(--bg-surface-0)',
@@ -399,16 +550,59 @@ export default function SearchPage() {
                   fontFamily: 'JetBrains Mono, monospace',
                   fontWeight: 600,
                 }}>
-                  {formatTime(selectedResult.start_time)} – {formatTime(selectedResult.end_time)}
+                  Moment: {formatTime(selectedResult.start_time)} – {formatTime(selectedResult.end_time)}
                 </span>
+                {selectedResult.scene_index !== undefined && selectedResult.scene_index !== null && (
+                  <span style={{
+                    fontSize: '0.72rem',
+                    padding: '2px 6px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    color: 'var(--text-secondary)',
+                    borderRadius: 'var(--radius-xs)',
+                  }}>
+                    Scene #{selectedResult.scene_index + 1}
+                  </span>
+                )}
+                {isPlaying && (
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '0.72rem',
+                    color: 'var(--accent-emerald)',
+                    padding: '2px 6px',
+                    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                    borderRadius: 'var(--radius-xs)',
+                    fontWeight: 600,
+                  }}>
+                    ● Playing
+                  </span>
+                )}
               </div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '3px' }}>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '3px' }}>
                 {selectedResult.evidence.explanation}
               </p>
             </div>
 
-            {/* Quick Actions */}
+            {/* Quick Actions Bar */}
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button
+                onClick={() => setIsLoopingMoment(!isLoopingMoment)}
+                style={{
+                  padding: '0.45rem 0.8rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 500,
+                  backgroundColor: isLoopingMoment ? 'var(--accent-cyan-subtle)' : 'rgba(255, 255, 255, 0.06)',
+                  color: isLoopingMoment ? '#22d3ee' : 'var(--text-secondary)',
+                  border: isLoopingMoment ? '1px solid var(--accent-cyan-border)' : '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-sm)',
+                }}
+                title="Loop playback inside matched boundary"
+              >
+                <ArrowsClockwise size={15} />
+                <span>{isLoopingMoment ? 'Looping Moment' : 'Loop Moment'}</span>
+              </button>
+
               <button
                 onClick={() => exportMutation.mutate(selectedResult)}
                 disabled={exportMutation.isPending}
@@ -421,6 +615,7 @@ export default function SearchPage() {
                   border: '1px solid var(--border-medium)',
                   borderRadius: 'var(--radius-sm)',
                 }}
+                title="Export this sub-clip as MP4 video"
               >
                 <DownloadSimple size={15} />
                 <span>{exportMutation.isPending ? 'Exporting...' : 'Export MP4'}</span>
@@ -445,7 +640,7 @@ export default function SearchPage() {
                 }}
               >
                 <Scissors size={15} />
-                <span>Edit Boundaries</span>
+                <span>Trim in Editor</span>
               </button>
 
               <button
@@ -458,7 +653,7 @@ export default function SearchPage() {
                   border: '1px solid var(--border-subtle)',
                   borderRadius: 'var(--radius-sm)',
                 }}
-                title="Inspect full video transcript and scenes"
+                title="Inspect full video analysis and transcripts"
               >
                 <ArrowSquareOut size={15} />
               </button>
@@ -471,6 +666,9 @@ export default function SearchPage() {
               src={proxyUrl}
               controls
               autoPlay
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              onTimeUpdate={handleVideoTimeUpdate}
               style={{
                 width: '100%',
                 maxHeight: '440px',
@@ -486,7 +684,7 @@ export default function SearchPage() {
         </div>
       )}
 
-      {/* Latency & Summary Metrics Bar */}
+      {/* Latency & Metrics Bar */}
       {searchData && (
         <div style={{
           display: 'flex',
@@ -503,7 +701,7 @@ export default function SearchPage() {
           gap: '0.5rem',
         }}>
           <div>
-            Found <strong style={{ color: 'var(--text-pure)' }}>{searchData.total_results}</strong> relevant moments for <span style={{ color: '#a5b4fc' }}>"{searchData.query}"</span>
+            Retrieved <strong style={{ color: 'var(--text-pure)' }}>{searchData.total_results}</strong> moment{searchData.total_results === 1 ? '' : 's'} for <span style={{ color: '#a5b4fc' }}>"{searchData.query}"</span>
           </div>
           <div style={{ display: 'flex', gap: '1rem', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem' }}>
             <span>Total: <strong style={{ color: '#818cf8' }}>{searchData.latency_ms}ms</strong></span>
@@ -516,7 +714,7 @@ export default function SearchPage() {
         </div>
       )}
 
-      {/* Loading Skeleton */}
+      {/* Shimmering Loading Skeleton */}
       {isLoading && (
         <div style={{ display: 'grid', gap: '1rem' }}>
           {[1, 2, 3].map((n) => (
@@ -545,7 +743,7 @@ export default function SearchPage() {
         </div>
       )}
 
-      {/* Error State */}
+      {/* Error Recovery State */}
       {isError && (
         <div style={{
           padding: '1.25rem',
@@ -561,7 +759,7 @@ export default function SearchPage() {
         }}>
           <WarningCircle size={24} weight="bold" />
           <div style={{ flex: 1 }}>
-            <strong>Search query execution failed:</strong> {String(error)}
+            <strong>Search failed:</strong> {String(error)}
           </div>
           <button
             onClick={() => refetch()}
@@ -595,13 +793,37 @@ export default function SearchPage() {
           <p style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-pure)', marginBottom: '0.35rem' }}>
             No matching video moments found
           </p>
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            Try broader terms, switch retrieval modes (e.g. from Dialogue to Actions or Everything), or upload a clearer reference image.
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '1.25rem' }}>
+            Try broader terms, switch retrieval modes (e.g. from Spoken Dialogue to Actions or Everything), or attach a clearer reference photo.
           </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {suggestedQueries.slice(0, 3).map((item) => (
+              <button
+                key={item.text}
+                type="button"
+                onClick={() => {
+                  setQueryInput(item.text)
+                  setActiveQuery(item.text)
+                  setSearchMode(item.mode)
+                  setSearchParams({ q: item.text, mode: item.mode })
+                }}
+                style={{
+                  padding: '0.25rem 0.65rem',
+                  fontSize: '0.75rem',
+                  backgroundColor: 'var(--bg-surface-1)',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-pill)',
+                }}
+              >
+                Try: {item.text}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Results List */}
+      {/* Ranked Moments Result List */}
       {searchData && searchData.results.length > 0 && (
         <div style={{ display: 'grid', gap: '1rem' }}>
           {searchData.results.map((result, idx) => {
@@ -632,7 +854,7 @@ export default function SearchPage() {
                   if (!isSelected) e.currentTarget.style.borderColor = 'var(--border-subtle)'
                 }}
               >
-                {/* Thumbnail Preview */}
+                {/* 16:9 Thumbnail Card */}
                 <div style={{
                   position: 'relative',
                   width: '100%',
@@ -653,7 +875,7 @@ export default function SearchPage() {
                     </div>
                   )}
 
-                  {/* Playhead timestamp overlay */}
+                  {/* Representative timestamp pill */}
                   <div style={{
                     position: 'absolute',
                     bottom: '6px',
@@ -783,7 +1005,7 @@ export default function SearchPage() {
                         border: '1px solid var(--border-subtle)',
                         borderRadius: 'var(--radius-sm)',
                       }}
-                      title="Export this moment as MP4"
+                      title="Export this moment as MP4 video"
                     >
                       <DownloadSimple size={12} />
                       <span>Export</span>

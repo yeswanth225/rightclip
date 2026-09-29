@@ -1,9 +1,12 @@
 """Application configuration management"""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -22,10 +25,10 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # Database
-    database_url: str = "sqlite:///./clipfinder.db"
+    database_url: str = f"sqlite:///{BASE_DIR / 'clipfinder.db'}"
 
     # Media Storage
-    media_storage_path: str = "./media"
+    media_storage_path: str = str(BASE_DIR / "media")
 
     # Security
     allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
@@ -53,7 +56,7 @@ class Settings(BaseSettings):
     clip_batch_size: int = 16
 
     # Vector Storage Settings
-    chroma_persist_dir: str = "./data/chroma_db"
+    chroma_persist_dir: str = str(BASE_DIR / "data" / "chroma_db")
     chroma_collection_name: str = "keyframes_vit_b_32"
 
     # Unified Search & Ranking Settings
