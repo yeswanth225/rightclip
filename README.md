@@ -36,40 +36,67 @@ Instead of manually watching a 2-hour video:
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Direct Single-Command Startup
 
-- Python 3.11+
-- Node.js 24+
-- FFmpeg 9.0+
-- Git
+#### 1. Run Backend Server (Direct Single Command)
 
-### Installation
+From the `backend` folder:
+```powershell
+# Windows (direct via virtualenv binary):
+.venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Linux/macOS:
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Or from the project repository root (`rightclip`):
+```powershell
+# Windows single command from root:
+.\backend\.venv\Scripts\uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
+
+# Linux/macOS single command from root:
+./backend/.venv/bin/uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
+```
+
+> **Backend API Docs:** Interactive Swagger UI available at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+---
+
+#### 2. Run Frontend Dev Server (Direct Single Command)
+
+From the `frontend` folder:
+```bash
+npm run dev
+```
+
+> **Web Application:** Accessible at [http://localhost:5173](http://localhost:5173)
+
+---
+
+### Prerequisites & First-Time Setup
+
+* **Python 3.11+**
+* **Node.js 20+**
+* **FFmpeg 7.0+ / 9.0+**
 
 ```bash
-# Clone repository
-git clone <repo-url>
-cd clip
-
-# Backend setup
+# 1. Backend environment setup (first time only)
 cd backend
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+python -m venv .venv
+# Activate:
+.venv\Scripts\activate   # Windows
+source .venv/bin/activate # Linux/macOS
+
 pip install -r requirements.txt
-alembic upgrade head
 
-# Run backend
-uvicorn app.main:app --reload
-
-# Frontend setup (new terminal)
-cd frontend
+# 2. Frontend setup (first time only)
+cd ../frontend
 npm install
-npm run dev
 ```
 
 ### Environment Variables
 
-Copy `.env.example` to `.env` and configure:
+Copy `.env.example` to `.env` in `backend/`:
 
 ```env
 # Database
@@ -78,13 +105,14 @@ DATABASE_URL=sqlite:///./clipfinder.db
 # Media Storage
 MEDIA_STORAGE_PATH=./media
 
-# Security
-ALLOWED_ORIGINS=http://localhost:5173
+# Security & CORS
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 
 # Processing Limits
 MAX_UPLOAD_SIZE_MB=2048
 MAX_VIDEO_DURATION_SECONDS=7200
 ```
+
 
 ## 📖 Documentation
 
@@ -144,13 +172,13 @@ ClipFinder provides unified AI-powered video moment retrieval combining:
 
 - [x] Phase 1 — Foundation (FastAPI + React 18 + Database)
 - [x] Phase 2 — Media ingestion, FFmpeg proxy & thumbnail processing
-- [x] Phase 3 — Whisper / faster-whisper speech transcription & timestamping
+- [x] Phase 3 — Whisper speech-to-text transcription & timestamping
 - [x] Phase 4 — PySceneDetect scene boundary detection
 - [x] Phase 5 — OpenCLIP ViT-B/32 keyframe indexing & ChromaDB vector storage
-- [x] Phase 6 — Unified transcript + visual rank fusion
-- [x] Phase 6.5 — Temporal Action Search, Semantic Dialogue, Person Reference, & Search UX Redesign
-- [x] Phase 7 — Precision Clip Editor (boundary trimming & save clip selection)
-- [ ] Phase 8 — FFmpeg Clip Export & Render Jobs
+- [x] Phase 6 — Unified multimodal search (Action, Dialogue, Visual, Person Reference)
+- [x] Phase 7 — Precision Clip Editor (boundary scrubbing & saved clips)
+- [x] Phase 8 — Physical MP4 Sub-Clip Export, Trimming & UI/UX Product Polish
+
 
 ## ⚠️ Important Notes
 
